@@ -4629,7 +4629,7 @@ case "$1" in
 				listurl="$customlisturl"
 				echo "[i] Custom Filter Detected: $customlisturl"
 			else
-				listurl="https://raw.githubusercontent.com/underd0se/IPSet_ASUS/feat/zero-swap-optimization/filter.list"
+				listurl="https://raw.githubusercontent.com/Adamm00/IPSet_ASUS/master/filter.list"
 			fi
 		fi
 		curl -fsSI "$listurl" >/dev/null || { echo "[*] Stopping Banmalware"; echo; exit 1; }
@@ -5132,7 +5132,7 @@ case "$1" in
 	update)
 		Check_Lock "$@"
 		if ! Check_Connection; then echo "[*] Connection Error Detected - Exiting"; echo; exit 1; fi
-		remotedir="https://raw.githubusercontent.com/underd0se/IPSet_ASUS/feat/zero-swap-optimization"
+		remotedir="https://raw.githubusercontent.com/underd0se/SkyNet-SF/master"
 		remotever="$(curl -fsL --retry 3 --max-time 6 "$remotedir/firewall.sh" | Filter_Version)"
 		localmd5="$(md5sum "$0" | awk '{print $1}')"
 		remotemd5="$(curl -fsL --retry 3 --max-time 6 "${remotedir}/firewall.sh" | md5sum | awk '{print $1}')"
@@ -6483,7 +6483,7 @@ case "$1" in
 		skynetcfg="${device}/skynet/skynet.cfg"
 		touch "${device}/skynet/events.log"
 		touch "${device}/skynet/skynet.log"
-		remotedir="https://raw.githubusercontent.com/underd0se/IPSet_ASUS/feat/zero-swap-optimization"
+		remotedir="https://raw.githubusercontent.com/underd0se/SkyNet-SF/master"
 		mkdir -p "${skynetloc}/webui"
 		Download_File "webui/chart.js" "${skynetloc}/webui/chart.js"
 		Download_File "webui/chartjs-plugin-zoom.js" "${skynetloc}/webui/chartjs-plugin-zoom.js"
