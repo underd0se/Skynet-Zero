@@ -3227,8 +3227,16 @@ Load_Menu() {
 					printf '%-35s | %-40s\n' "[15] --> Stats Country Lookup" "$(if Is_Enabled "$lookupcountry"; then Grn "[Enabled]"; else Ylow "[Disabled]"; fi)"
 					printf '%-35s | %-40s\n' "[16] --> CDN Whitelisting" "$(if Is_Enabled "$cdnwhitelist"; then Grn "[Enabled]"; else Red "[Disabled]"; fi)"
 					printf '%-35s | %-40s\n' "[17] --> Display WebUI" "$(if Is_Enabled "$displaywebui"; then Grn "[Enabled]"; else Ylow "[Disabled]"; fi)"
+					if grep -q "vm/swappiness # SkyNet-SF" /jffs/scripts/firewall-start 2>/dev/null; then
+						swapmode_status="$(Grn "[Swap-Free]")"
+					elif grep -qE "swapon .* # Skynet" /jffs/scripts/post-mount 2>/dev/null; then
+						swapmode_status="$(Ylow "[Swap]")"
+					else
+						swapmode_status="$(Red "[None]")"
+					fi
+					printf '%-35s | %-40s\n' "[18] --> Switch Swap Mode" "$swapmode_status"
 					echo
-					printf "[1-17]: "
+					printf "[1-18]: "
 					read -r "menu2"
 					echo
 					case "$menu2" in
@@ -3862,6 +3870,11 @@ Load_Menu() {
 									;;
 								esac
 							done
+							break
+						;;
+						18)
+							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							option2="switchswap"
 							break
 						;;
 						e|exit|back|menu)
@@ -5773,6 +5786,66 @@ case "$1" in
 						Command_Not_Recognized
 					;;
 				esac
+			;;
+			switchswap)
+				Check_Lock "$@"
+				if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+				Purge_Logs
+
+				if grep -qE "swapon .* # Skynet" /jffs/scripts/post-mount 2>/dev/null; then
+					while true; do
+						Show_Menu "Would You Like To Remove The Existing Skynet Swap File?" \
+							"Yes" \
+							"No (Keep Existing Swap)" \
+							"Exit"
+						Prompt_Input "1-2" deleteswap
+						case "$deleteswap" in
+							1)
+								echo "[i] Removing Skynet Generated SWAP File"
+								sed -i '\~# Skynet~d' /jffs/scripts/post-mount /jffs/scripts/unmount 2>/dev/null
+								sync; echo 3 > /proc/sys/vm/drop_caches
+								swapoff -a 2>/dev/null
+								for s in /tmp/mnt/*/myswap.swp; do
+									[ -f "$s" ] && rm -f "$s"
+								done
+								break
+							;;
+							2)
+								echo "[i] Keeping existing Skynet Swap File"
+								sed -i '\~# Skynet~d' /jffs/scripts/post-mount /jffs/scripts/unmount 2>/dev/null
+								break
+							;;
+							e|exit)
+								Return_To_Menu
+								break 2
+							;;
+							*)
+								Invalid_Option "$deleteswap"
+							;;
+						esac
+					done
+				fi
+
+				old_overcommit="$(nvram get skynet_old_overcommit)"
+				if [ -n "$old_overcommit" ]; then
+					echo "$old_overcommit" > /proc/sys/vm/overcommit_memory
+					nvram unset skynet_old_overcommit
+				fi
+				old_swappiness="$(nvram get skynet_old_swappiness)"
+				if [ -n "$old_swappiness" ]; then
+					echo "$old_swappiness" > /proc/sys/vm/swappiness
+					nvram unset skynet_old_swappiness
+				fi
+				nvram commit
+				sed -i '\~# SkyNet-SF~d' /jffs/scripts/firewall-start 2>/dev/null
+
+				device="$(echo "$skynetloc" | awk -F'/skynet' '{print $1}')"
+				if [ -z "$device" ] || [ ! -d "$device" ]; then
+					echo "[*] No valid USB device located at $device. Returning to menu."
+					echo
+				else
+					Create_Swap
+				fi
 			;;
 			*)
 				Command_Not_Recognized
