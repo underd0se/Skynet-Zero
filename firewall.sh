@@ -2432,7 +2432,14 @@ Create_Swap() {
 			3)
 				echo "[i] Proceeding without SWAP file (SkyNet-SF mode)"
 				echo
+				if [ -f /proc/sys/vm/overcommit_memory ]; then
+					old_oc="$(cat /proc/sys/vm/overcommit_memory)"
+					echo 1 > /proc/sys/vm/overcommit_memory
+				fi
 				for swap in $(awk 'NR>1 {print $1}' /proc/swaps 2>/dev/null); do swapoff "$swap" 2>/dev/null; done
+				if [ -n "$old_oc" ]; then
+					echo "$old_oc" > /proc/sys/vm/overcommit_memory
+				fi
 				sed -i 's/^swapon /#swapon /g' /jffs/scripts/post-mount 2>/dev/null
 				if ! grep -qiF "swapon " /jffs/scripts/post-mount; then
 					echo "# swapon bypassed for SkyNet-SF" >> /jffs/scripts/post-mount
