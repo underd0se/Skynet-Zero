@@ -6348,6 +6348,10 @@ case "$1" in
 			echo "[*] Private IP Detected - Please Put Your Modem In Bridge Mode / Disable CG-NAT"
 			echo
 		fi
+		if [ -f /proc/sys/vm/overcommit_memory ]; then
+			nvram set skynet_old_overcommit="$(cat /proc/sys/vm/overcommit_memory)"
+			nvram commit
+		fi
 		echo "[i] Installing Skynet $(Filter_Version < "$0")"
 		echo
 		Manage_Device
@@ -6596,6 +6600,11 @@ case "$1" in
 					Unload_IPSets
 					Uninstall_WebUI_Page
 					nvram set fw_log_x=none
+					old_overcommit="$(nvram get skynet_old_overcommit)"
+					if [ -n "$old_overcommit" ]; then
+						echo "$old_overcommit" > /proc/sys/vm/overcommit_memory
+						nvram unset skynet_old_overcommit
+					fi
 					nvram commit
 					echo "[i] Deleting Skynet Files"
 					sed -i '\~# Skynet~d' /jffs/scripts/firewall-start /jffs/scripts/services-stop /jffs/scripts/service-event /jffs/configs/profile.add /jffs/configs/dnsmasq.conf.add
