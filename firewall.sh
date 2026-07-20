@@ -10,14 +10,16 @@
 #                                                                                                           #
 #                                 Router Firewall And Security Enhancements                                 #
 #                      By Adamm (Forked by underd0se) -  https://github.com/underd0se/SkyNet-SF             #
-#                                      16/07/2026 - v8.1.0 (Swap-Free)                                      #
+#                                      20/07/2026 - v8.1.1 (Swap-Free)                                      #
 #############################################################################################################
 
 
 export PATH="/sbin:/bin:/usr/sbin:/usr/bin:$PATH"
 printf '\033[?7l'
-clear
-sed -n '2,14p' "$0"
+if [ "$1" != "amtmupdate" ]; then
+	clear
+	sed -n '2,14p' "$0"
+fi
 export LC_ALL=C
 mkdir -p /tmp/skynet/lists
 mkdir -p /jffs/addons/shared-whitelists
@@ -4367,7 +4369,9 @@ if [ -n "$option1" ]; then
 	echo "[$] $0 $*"
 fi
 
-Display_Header "9"
+if [ "$1" != "amtmupdate" ]; then
+	Display_Header "9"
+fi
 
 ##############
 #- Commands -#
@@ -5139,9 +5143,12 @@ case "$1" in
 		nolog="2"
 	;;
 
-	update)
+	update|amtmupdate)
 		Check_Lock "$@"
 		if ! Check_Connection; then echo "[*] Connection Error Detected - Exiting"; echo; exit 1; fi
+		if [ "$1" = "amtmupdate" ] && [ "$2" = "check" ]; then
+			exit 0
+		fi
 		remotedir="https://raw.githubusercontent.com/underd0se/SkyNet-SF/master"
 		remotever="$(curl -fsL --retry 3 --max-time 6 "$remotedir/firewall.sh" | Filter_Version)"
 		localmd5="$(md5sum "$0" | awk '{print $1}')"
@@ -5174,7 +5181,7 @@ case "$1" in
 			Download_File "webui/skynet.asp" "${skynetloc}/webui/skynet.asp" "$2"
 			Download_File "firewall.sh" "$0" "$2"
 			Log info "Restarting Firewall Service"
-			service restart_firewall
+			service restart_firewall >/dev/null 2>&1
 			echo; exit 0
 		fi
 	;;
