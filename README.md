@@ -16,6 +16,8 @@ By explicitly instructing the Linux kernel to prioritize dropping the page cache
 
 Because SkyNet-SF operates at native physical RAM speeds without relying on USB paging, users will notice higher overall physical memory utilization in the Asuswrt WebUI. This is completely normal and mathematically safe. The router seamlessly balances physical memory demands in the background, offering significantly faster execution times for firewall updates while achieving zero USB write degradation.
 
+> **Zero-Swap Survival Note:** While keeping a dormant swap file mounted is recommended as a virtual `CommitLimit` fail-safe, telemetry proves that the `swappiness=0` architecture is so efficient at forcing the kernel to purge disk caches that Asuswrt routers can natively survive extreme firewall compilations even if the user has **0 bytes** of swap mounted.
+
 ## Stress Testing & Stability Validation
 
 To validate the stability of the `swappiness=0` architecture, SkyNet-SF was subjected to an extreme Edge Case Simulator on native Asuswrt hardware. The script flawlessly executed an exhaustive compilation (IP blocks, malware crunching, and dynamic stat generation) while the router was actively suppressed under four simultaneous catastrophic constraints:
