@@ -2432,7 +2432,9 @@ Create_Swap() {
 			3)
 				echo "[i] Proceeding without SWAP file (SkyNet-SF mode)"
 				echo
-				if ! grep -qF "swapon " /jffs/scripts/post-mount; then
+				for swap in $(awk 'NR>1 {print $1}' /proc/swaps 2>/dev/null); do swapoff "$swap" 2>/dev/null; done
+				sed -i 's/^swapon /#swapon /g' /jffs/scripts/post-mount 2>/dev/null
+				if ! grep -qiF "swapon " /jffs/scripts/post-mount; then
 					echo "# swapon bypassed for SkyNet-SF" >> /jffs/scripts/post-mount
 				fi
 				return 0
@@ -6494,7 +6496,7 @@ case "$1" in
 		done
 		echo
 		Check_Files firewall-start services-stop service-event post-mount unmount
-		if ! grep -qF "swapon " /jffs/scripts/post-mount; then Create_Swap; fi
+		Create_Swap
 		if [ -f "$skynetlog" ]; then mv "$skynetlog" "${device}/skynet/skynet.log"; fi
 		if [ -f "$skynetevents" ]; then mv "$skynetevents" "${device}/skynet/events.log"; fi
 		if [ -f "$skynetipset" ]; then mv "$skynetipset" "${device}/skynet/skynet.ipset"; fi
@@ -6616,6 +6618,8 @@ case "$1" in
 					echo "[i] Deleting Skynet Files"
 					sed -i '\~# Skynet~d' /jffs/scripts/firewall-start /jffs/scripts/services-stop /jffs/scripts/service-event /jffs/configs/profile.add /jffs/configs/dnsmasq.conf.add
 					sed -i '\~# swapon bypassed for SkyNet-SF~d' /jffs/scripts/post-mount
+					sed -i 's/^#swapon /swapon /g' /jffs/scripts/post-mount 2>/dev/null
+					awk '/^swapon / {print $0}' /jffs/scripts/post-mount 2>/dev/null | sh
 					service restart_dnsmasq >/dev/null 2>&1
 					rm -rf "/jffs/addons/shared-whitelists/shared-Skynet-whitelist" "/jffs/addons/shared-whitelists/shared-Skynet2-whitelist" "${skynetloc}" "/jffs/scripts/firewall" "/opt/bin/firewall" "/tmp/skynet.lock" "/tmp/skynet"
 					if [ -f "/opt/etc/syslog-ng.d/skynet" ]; then
