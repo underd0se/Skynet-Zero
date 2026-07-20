@@ -6541,6 +6541,12 @@ case "$1" in
 		else
 			echo "$cmdline" >> /jffs/scripts/firewall-start
 		fi
+		if [ "$skynetsf" = "1" ]; then
+			cmdline2="echo 0 > /proc/sys/vm/swappiness # SkyNet-SF"
+			if ! grep -qE "^echo .* # SkyNet-SF" /jffs/scripts/firewall-start; then
+				echo "$cmdline2" >> /jffs/scripts/firewall-start
+			fi
+		fi
 		cmdline="sh /jffs/scripts/firewall save # Skynet"
 		if grep -qE "^sh /jffs/scripts/firewall .* # Skynet" /jffs/scripts/services-stop; then
 			sed -i "s~sh /jffs/scripts/firewall .* # Skynet .*~$cmdline~" /jffs/scripts/services-stop
@@ -6621,12 +6627,18 @@ case "$1" in
 						echo "$old_overcommit" > /proc/sys/vm/overcommit_memory
 						nvram unset skynet_old_overcommit
 					fi
+					old_swappiness="$(nvram get skynet_old_swappiness)"
+					if [ -n "$old_swappiness" ]; then
+						echo "$old_swappiness" > /proc/sys/vm/swappiness
+						nvram unset skynet_old_swappiness
+					fi
 					nvram commit
 					echo "[i] Deleting Skynet Files"
 					sed -i '\~# Skynet~d' /jffs/scripts/firewall-start /jffs/scripts/services-stop /jffs/scripts/service-event /jffs/configs/profile.add /jffs/configs/dnsmasq.conf.add
-					sed -i '\~# swapon bypassed for SkyNet-SF~d' /jffs/scripts/post-mount
+					sed -i '\~# SkyNet-SF~d' /jffs/scripts/firewall-start 2>/dev/null
+					# Legacy cleanup for old bypass
+					sed -i '\~# swapon bypassed for SkyNet-SF~d' /jffs/scripts/post-mount 2>/dev/null
 					sed -i 's/^#swapon /swapon /g' /jffs/scripts/post-mount 2>/dev/null
-					awk '/^swapon / {print $0}' /jffs/scripts/post-mount 2>/dev/null | sh
 					service restart_dnsmasq >/dev/null 2>&1
 					rm -rf "/jffs/addons/shared-whitelists/shared-Skynet-whitelist" "/jffs/addons/shared-whitelists/shared-Skynet2-whitelist" "${skynetloc}" "/jffs/scripts/firewall" "/opt/bin/firewall" "/tmp/skynet.lock" "/tmp/skynet"
 					if [ -f "/opt/etc/syslog-ng.d/skynet" ]; then
