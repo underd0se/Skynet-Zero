@@ -2343,8 +2343,13 @@ Manage_Device() {
 	set --
 	while read -r _ mnt fs _; do
 		case "$fs" in
-			ext2|ext3|ext4|tfat|exfat|jffs2|ubifs)
+			ext2|ext3|ext4|tfat|exfat)
 				set -- "$@" "$mnt"
+				;;
+			jffs2|ubifs)
+				if [ "$mnt" = "/jffs" ]; then
+					set -- "$@" "$mnt"
+				fi
 				;;
 		esac
 	done < /proc/mounts
