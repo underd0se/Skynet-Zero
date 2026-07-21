@@ -5199,10 +5199,12 @@ case "$1" in
 			iptables -t raw -F
 			Uninstall_WebUI_Page
 			mkdir -p "${skynetloc}/webui"
+			remotedir="https://raw.githubusercontent.com/Adamm00/IPSet_ASUS/master"
 			Download_File "webui/chart.js" "${skynetloc}/webui/chart.js" "$2"
 			Download_File "webui/chartjs-plugin-zoom.js" "${skynetloc}/webui/chartjs-plugin-zoom.js" "$2"
 			Download_File "webui/hammerjs.js" "${skynetloc}/webui/hammerjs.js" "$2"
 			Download_File "webui/skynet.asp" "${skynetloc}/webui/skynet.asp" "$2"
+			remotedir="https://raw.githubusercontent.com/underd0se/Skynet-Zero/master"
 			Download_File "firewall.sh" "$0" "$2"
 			Log info "Restarting Firewall Service"
 			service restart_firewall >/dev/null 2>&1
@@ -6595,6 +6597,7 @@ case "$1" in
 		touch "${device}/skynet/skynet.log"
 		remotedir="https://raw.githubusercontent.com/underd0se/Skynet-Zero/master"
 		mkdir -p "${skynetloc}/webui"
+		remotedir="https://raw.githubusercontent.com/Adamm00/IPSet_ASUS/master"
 		Download_File "webui/chart.js" "${skynetloc}/webui/chart.js"
 		Download_File "webui/chartjs-plugin-zoom.js" "${skynetloc}/webui/chartjs-plugin-zoom.js"
 		Download_File "webui/hammerjs.js" "${skynetloc}/webui/hammerjs.js"
