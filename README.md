@@ -46,13 +46,27 @@ In your SSH Client, run the following command:
 /usr/sbin/curl -s "https://raw.githubusercontent.com/underd0se/Skynet-Zero/master/firewall.sh" -o "/jffs/scripts/firewall" && chmod 755 /jffs/scripts/firewall && sh /jffs/scripts/firewall install
 ```
 
+During the interactive installation wizard:
+1. When prompted to **Select SWAP File Size**, choose **Option 3: 0GB (Zero Swap - Skynet Zero)** to install the firewall without generating a swap file.
+2. Follow the remaining prompts to configure your logging and filtering preferences.
+
 **Changes Made During Installation:**
 1. Downloads the execution script to `/jffs/scripts/firewall`.
-2. Creates the data directory (`skynetloc`) on your selected USB partition.
+2. Creates the data directory (`skynetloc`) on your selected USB partition (or `/jffs` if explicitly selected).
 3. Injects execution triggers into `/jffs/scripts/firewall-start`, `/jffs/scripts/services-stop`, and `/jffs/scripts/service-event`.
 4. Injects configuration settings into `/jffs/configs/profile.add` and `/jffs/configs/dnsmasq.conf.add`.
 5. Backs up your router's default `swappiness` and `overcommit_memory` settings to NVRAM.
 6. Dynamically enforces `swappiness=0` (if Skynet Zero mode is selected) and `overcommit_memory=0`, and injects persistence commands into `/jffs/scripts/firewall-start`.
+
+## Switching Swap Modes
+
+Skynet Zero provides a seamless UI toggle to switch between traditional USB Swap mode and the optimized Zero Swap mode at any time, without needing to reinstall.
+
+1. Open the Skynet interactive menu by typing `firewall` in your SSH client.
+2. Navigate to **Settings** (Option 11).
+3. Select **Switch Swap Mode** (Option 18).
+4. **If switching TO Zero Swap:** The engine will prompt you to cleanly delete your existing USB swap file, revert your kernel logic, and then activate the Skynet Zero configuration.
+5. **If switching TO Traditional Swap:** The engine will cleanly wipe the Skynet Zero kernel hooks and walk you through generating a new 2GB swap file on your USB drive.
 
 ## Uninstallation Procedure
 
