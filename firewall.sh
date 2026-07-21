@@ -197,6 +197,10 @@ Check_Settings() {
 			echo 0 > /proc/sys/vm/overcommit_memory
 			Log info -s "Relaxed kernel overcommit limit to safely bypass SWAP requirement."
 		fi
+		if [ -f /proc/sys/vm/swappiness ] && [ "$(cat /proc/sys/vm/swappiness)" != "0" ]; then
+			echo 0 > /proc/sys/vm/swappiness
+			Log info -s "Kernel swappiness dynamically set to 0 (Optimized for Swap-Free mode)"
+		fi
 	elif Check_Swap && [ -z "$(grep -E 'swapon [^#]+' /jffs/scripts/post-mount | cut -d ' ' -f2)" ]; then
 		Log error -s "SWAPON Entry Missing - Fix This By Running ( $0 debug swap uninstall ) Then ( $0 debug swap install )"
 		echo; exit 1
@@ -2437,11 +2441,7 @@ Create_Swap() {
 			3)
 				echo "[i] Proceeding without SWAP file (Skynet Zero mode)"
 				echo
-				skynetsf="1"
-				if [ -f /proc/sys/vm/swappiness ]; then
-					old_swappiness="$(cat /proc/sys/vm/swappiness)"
-					nvram set skynet_old_swappiness="$old_swappiness"
-					nvram commit
+				if [ -f /proc/sys/vm/swappiness ] && [ "$(cat /proc/sys/vm/swappiness)" != "0" ]; then
 					echo 0 > /proc/sys/vm/swappiness
 					echo "[i] Kernel swappiness dynamically set to 0 (Optimized for Swap-Free mode)"
 					echo
@@ -5833,17 +5833,6 @@ case "$1" in
 					done
 				fi
 
-				old_overcommit="$(nvram get skynet_old_overcommit)"
-				if [ -n "$old_overcommit" ]; then
-					echo "$old_overcommit" > /proc/sys/vm/overcommit_memory
-					nvram unset skynet_old_overcommit
-				fi
-				old_swappiness="$(nvram get skynet_old_swappiness)"
-				if [ -n "$old_swappiness" ]; then
-					echo "$old_swappiness" > /proc/sys/vm/swappiness
-					nvram unset skynet_old_swappiness
-				fi
-				nvram commit
 				sed -i '\~# Skynet Zero~d' /jffs/scripts/firewall-start 2>/dev/null; sed -i '\~# SkyNet-SF~d' /jffs/scripts/firewall-start 2>/dev/null
 
 				device="$(echo "$skynetloc" | awk -F'/skynet' '{print $1}')"
@@ -5852,11 +5841,6 @@ case "$1" in
 					echo
 				else
 					Create_Swap
-					if [ "$skynetsf" = "1" ]; then
-						if ! grep -q "vm/swappiness # Skynet Zero" /jffs/scripts/firewall-start; then
-							echo "echo 0 > /proc/sys/vm/swappiness # Skynet Zero" >> /jffs/scripts/firewall-start
-						fi
-					fi
 				fi
 			;;
 			*)
@@ -6446,9 +6430,8 @@ case "$1" in
 			echo "[*] Private IP Detected - Please Put Your Modem In Bridge Mode / Disable CG-NAT"
 			echo
 		fi
-		if [ -f /proc/sys/vm/overcommit_memory ]; then
-			nvram set skynet_old_overcommit="$(cat /proc/sys/vm/overcommit_memory)"
-			nvram commit
+		if [ -f /proc/sys/vm/overcommit_memory ] && [ "$(cat /proc/sys/vm/overcommit_memory)" = "2" ]; then
+			echo 0 > /proc/sys/vm/overcommit_memory
 		fi
 		echo "[i] Installing Skynet $(Filter_Version < "$0")"
 		echo
@@ -6624,12 +6607,6 @@ case "$1" in
 		else
 			echo "$cmdline" >> /jffs/scripts/firewall-start
 		fi
-		if [ "$skynetsf" = "1" ]; then
-			cmdline2="echo 0 > /proc/sys/vm/swappiness # Skynet Zero"
-			if ! grep -qE "^echo .* # Skynet Zero" /jffs/scripts/firewall-start; then
-				echo "$cmdline2" >> /jffs/scripts/firewall-start
-			fi
-		fi
 		cmdline="sh /jffs/scripts/firewall save # Skynet"
 		if grep -qE "^sh /jffs/scripts/firewall .* # Skynet" /jffs/scripts/services-stop; then
 			sed -i "s~sh /jffs/scripts/firewall .* # Skynet .*~$cmdline~" /jffs/scripts/services-stop
@@ -6705,17 +6682,6 @@ case "$1" in
 					Unload_IPSets
 					Uninstall_WebUI_Page
 					nvram set fw_log_x=none
-					old_overcommit="$(nvram get skynet_old_overcommit)"
-					if [ -n "$old_overcommit" ]; then
-						echo "$old_overcommit" > /proc/sys/vm/overcommit_memory
-						nvram unset skynet_old_overcommit
-					fi
-					old_swappiness="$(nvram get skynet_old_swappiness)"
-					if [ -n "$old_swappiness" ]; then
-						echo "$old_swappiness" > /proc/sys/vm/swappiness
-						nvram unset skynet_old_swappiness
-					fi
-					nvram commit
 					echo "[i] Deleting Skynet Files"
 					sed -i '\~# Skynet~d' /jffs/scripts/firewall-start /jffs/scripts/services-stop /jffs/scripts/service-event /jffs/configs/profile.add /jffs/configs/dnsmasq.conf.add
 					sed -i '\~# Skynet Zero~d' /jffs/scripts/firewall-start 2>/dev/null; sed -i '\~# SkyNet-SF~d' /jffs/scripts/firewall-start 2>/dev/null
