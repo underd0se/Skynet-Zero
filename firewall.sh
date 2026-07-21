@@ -768,6 +768,14 @@ Check_IPTables() {
 	[ -n "$fail" ] && return 1 || return 0
 }
 
+Verify_Skynet_State() {
+	if ! Check_IPSets || ! Check_IPTables; then
+		echo "[*] Skynet Not Running - Exiting"
+		echo
+		exit 1
+	fi
+}
+
 Unload_IPSets() {
 	ipset -q destroy Skynet-Master
 	ipset -q destroy Skynet-MasterWL
@@ -2270,24 +2278,37 @@ Uninstall_WebUI_Page() {
 }
 
 Download_File() {
-	file="$1"
-	dest="$2"
-	force="$3"
+	local file="$1"
+	local dest="$2"
+	local force="$3"
+	local fullurl="${remotedir}/${file}"
+	local filename="$(basename "$file")"
+	local temp_dest="/tmp/skynet_${filename}"
 
-	fullurl="${remotedir}/${file}"
-	filename="$(basename "$file")"
-
-	# Only re-download if file changed or forced
-	remote_md5="$(curl -fsSL --retry 3 --connect-timeout 3 --max-time 6 --retry-delay 1 --retry-all-errors "$fullurl" | md5sum | awk '{print $1}')"
-	local_md5="$(md5sum "$dest" 2>/dev/null | awk '{print $1}')"
-
-	if [ "$remote_md5" != "$local_md5" ] || [ "$force" = "-f" ]; then
+	# Force download if specified
+	if [ "$force" = "-f" ]; then
 		if curl -fsSL --retry 3 --connect-timeout 3 --max-time 6 --retry-delay 1 --retry-all-errors "$fullurl" -o "$dest"; then
 			echo "[i] Updated $filename"
 		else
 			Log error "Failed to update $filename"
 		fi
+		return 0
+	fi
+
+	# Download to temp file to prevent double-curling
+	if ! curl -fsSL --retry 3 --connect-timeout 3 --max-time 6 --retry-delay 1 --retry-all-errors "$fullurl" -o "$temp_dest"; then
+		Log error "Failed to download $filename"
+		return 1
+	fi
+
+	local remote_md5="$(md5sum "$temp_dest" 2>/dev/null | awk '{print $1}')"
+	local local_md5="$(md5sum "$dest" 2>/dev/null | awk '{print $1}')"
+
+	if [ "$remote_md5" != "$local_md5" ]; then
+		mv -f "$temp_dest" "$dest"
+		echo "[i] Updated $filename"
 	else
+		rm -f "$temp_dest"
 		echo "[i] No change to $filename (MD5 matched)"
 	fi
 }
@@ -2339,25 +2360,24 @@ Get_LocalName() {
 Manage_Device() {
 	echo "[i] Looking for available partitions"
 
-	# Build $@ = list of mountpoints whose fs is ext2/3/4, vfat, exfat, ntfs, jffs2 or ubifs
-	set --
+	local partitions=()
 	while read -r _ mnt fs _; do
 		case "$fs" in
 			ext2|ext3|ext4|tfat|exfat)
-				set -- "$@" "$mnt"
+				partitions+=("$mnt")
 				;;
 			jffs2|ubifs)
 				if [ "$mnt" = "/jffs" ]; then
-					set -- "$@" "$mnt"
+					partitions+=("$mnt")
 				fi
 				;;
 		esac
 	done < /proc/mounts
 
 	# If none found, fallback to /jffs
-	if [ $# -eq 0 ]; then
+	if [ ${#partitions[@]} -eq 0 ]; then
 		if [ -d "/jffs" ]; then
-			set -- "/jffs"
+			partitions+=("/jffs")
 		else
 			echo "[*] No compatible USB partitions or /jffs found - exiting!"
 			echo
@@ -2366,8 +2386,8 @@ Manage_Device() {
 	fi
 
 	# Display numbered list
-	idx=0
-	for m in "$@"; do
+	local idx=0
+	for m in "${partitions[@]}"; do
 		idx=$((idx + 1))
 		echo "[$idx] --> $m"
 	done
@@ -2391,14 +2411,7 @@ Manage_Device() {
 			;;
 			*)
 				if [ "$partitionNumber" -ge 1 ] && [ "$partitionNumber" -le "$idx" ]; then
-					choice=0
-					for m in "$@"; do
-						choice=$((choice + 1))
-						if [ "$choice" -eq "$partitionNumber" ]; then
-							device="$m"
-							break
-						fi
-					done
+					device="${partitions[$((partitionNumber - 1))]}"
 
 					# Test writability
 					if ! touch "$device/rwtest" 2>/dev/null; then
@@ -3246,7 +3259,7 @@ Load_Menu() {
 					echo
 					case "$menu2" in
 						1)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="autoupdate"
 							while true; do
 								Show_Menu "Select Skynet Autoupdate Option:" \
@@ -3275,7 +3288,7 @@ Load_Menu() {
 							break
 						;;
 						2)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="banmalware"
 							while true; do
 								Show_Menu "Select Malware Blacklist Updating Frequency:" \
@@ -3309,7 +3322,7 @@ Load_Menu() {
 							break
 						;;
 						3)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="logmode"
 							while true; do
 							Show_Menu "Select Logging Option" \
@@ -3338,7 +3351,7 @@ Load_Menu() {
 							break
 						;;
 						4)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="loginvalid"
 							while true; do
 								Show_Menu "Select Invalid Packet Logging Option" \
@@ -3367,7 +3380,7 @@ Load_Menu() {
 							break
 						;;
 						5)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="logsize"
 							while true; do
 								Show_Menu "Select Log Size Option" \
@@ -3398,7 +3411,7 @@ Load_Menu() {
 							break
 						;;
 						6)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="filter"
 							while true; do
 							Show_Menu "Select Traffic Filter" \
@@ -3432,7 +3445,7 @@ Load_Menu() {
 							break
 						;;
 						7)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="unbanprivate"
 							while true; do
 								Show_Menu "Select Filter PrivateIP Option" \
@@ -3461,7 +3474,7 @@ Load_Menu() {
 							break
 						;;
 						8)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="banaiprotect"
 							while true; do
 								Show_Menu "Select Ban AiProtect Option" \
@@ -3490,7 +3503,7 @@ Load_Menu() {
 							break
 						;;
 						9)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="securemode"
 							while true; do
 								Show_Menu "Select Secure Mode Option" \
@@ -3519,7 +3532,7 @@ Load_Menu() {
 							break
 						;;
 						10)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="extendedstats"
 							while true; do
 								Show_Menu "Select Extended Stats Option" \
@@ -3548,7 +3561,7 @@ Load_Menu() {
 							break
 						;;
 						11)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option1="fs"
 							while true; do
 								Show_Menu "Select Fast Switch List Option" \
@@ -3578,7 +3591,7 @@ Load_Menu() {
 							break
 						;;
 						12)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							while true; do
 								Show_Menu "Select Syslog To Configure:" \
 									"syslog.log" \
@@ -3658,7 +3671,7 @@ Load_Menu() {
 							break
 						;;
 						13)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							while true; do
 								option2="iot"
 								Show_Menu "Select IOT Option:" \
@@ -3762,7 +3775,7 @@ Load_Menu() {
 							break
 						;;
 						14)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="iotlogging"
 							while true; do
 								Show_Menu "Select IOT Logging Option" \
@@ -3791,7 +3804,7 @@ Load_Menu() {
 							break
 						;;
 						15)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="lookupcountry"
 							while true; do
 								Show_Menu "Select Country Lookup For Stats Option:" \
@@ -3820,7 +3833,7 @@ Load_Menu() {
 							break
 						;;
 						16)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="cdnwhitelist"
 							while true; do
 								Show_Menu "Select CDN Whitelisting Option:" \
@@ -3849,7 +3862,7 @@ Load_Menu() {
 							break
 						;;
 						17)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="webui"
 							while true; do
 								Show_Menu "Select WebUI Option:" \
@@ -3878,7 +3891,7 @@ Load_Menu() {
 							break
 						;;
 						18)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="switchswap"
 							break
 						;;
@@ -3911,7 +3924,7 @@ Load_Menu() {
 					Prompt_Input "1-6" menu2
 					case "$menu2" in
 						1)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="watch"
 							while true; do
 								Show_Menu "Select Watch Option:" \
@@ -3984,12 +3997,12 @@ Load_Menu() {
 							break
 						;;
 						5)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="backup"
 							break
 						;;
 						6)
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							option2="restore"
 							break
 						;;
@@ -4405,7 +4418,7 @@ fi
 case "$1" in
 	unban)
 		Check_Lock "$@"
-		if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+		Verify_Skynet_State
 		Purge_Logs
 		case "$2" in
 			ip)
@@ -4485,7 +4498,7 @@ case "$1" in
 
 	ban)
 		Check_Lock "$@"
-		if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+		Verify_Skynet_State
 		if ! Check_Connection; then echo "[*] Connection Error Detected - Exiting"; echo; exit 1; fi
 		Purge_Logs
 		case "$2" in
@@ -4614,7 +4627,7 @@ case "$1" in
 
 	banmalware|fs)
 		Check_Lock "$@"
-		if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+		Verify_Skynet_State
 		if ! Check_Connection; then echo "[*] Connection Error Detected - Exiting"; echo; exit 1; fi
 		Purge_Logs
 		if [ "$2" = "disable" ] && [ "$fastswitch" = "disabled" ] && [ "$1" = "fs" ]; then
@@ -4818,7 +4831,7 @@ case "$1" in
 
 	whitelist)
 		Check_Lock "$@"
-		if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+		Verify_Skynet_State
 		Purge_Logs
 		case "$2" in
 			ip|range)
@@ -4932,7 +4945,7 @@ case "$1" in
 		case "$2" in
 			blacklist)
 				Check_Lock "$@"
-				if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+				Verify_Skynet_State
 				if ! Check_Connection; then echo "[*] Connection Error Detected - Exiting"; echo; exit 1; fi
 				Purge_Logs
 				echo "[i] This Function Extracts All IPs And Adds Them ALL To Blacklist"
@@ -4965,7 +4978,7 @@ case "$1" in
 			;;
 			whitelist)
 				Check_Lock "$@"
-				if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+				Verify_Skynet_State
 				if ! Check_Connection; then echo "[*] Connection Error Detected - Exiting"; echo; exit 1; fi
 				Purge_Logs
 				echo "[i] This Function Extracts All IPs And Adds Them ALL To Whitelist"
@@ -5004,7 +5017,7 @@ case "$1" in
 		case "$2" in
 			blacklist)
 				Check_Lock "$@"
-				if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+				Verify_Skynet_State
 				if ! Check_Connection; then echo "[*] Connection Error Detected - Exiting"; echo; exit 1; fi
 				Purge_Logs
 				echo "[i] This Function Extracts All IPs And Removes Them ALL From Blacklist"
@@ -5032,7 +5045,7 @@ case "$1" in
 			;;
 			whitelist)
 				Check_Lock "$@"
-				if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+				Verify_Skynet_State
 				if ! Check_Connection; then echo "[*] Connection Error Detected - Exiting"; echo; exit 1; fi
 				Purge_Logs
 				echo "[i] This Function Extracts All IPs And Removes Them ALL From Whitelist"
@@ -5180,14 +5193,20 @@ case "$1" in
 		if [ "$localmd5" = "$remotemd5" ] && [ "$2" != "-f" ]; then
 			Log info "Skynet Up To Date - $localver (${localmd5})"
 			nolog="2"
-		elif [ "$localmd5" != "$remotemd5" ] && [ "$2" = "check" ]; then
+			return 0 2>/dev/null || exit 0
+		fi
+
+		if [ "$2" = "check" ]; then
 			Log info "Skynet Update Detected - $remotever (${remotemd5})"
 			nolog="2"
-		elif [ "$2" = "-f" ]; then
+			return 0 2>/dev/null || exit 0
+		fi
+
+		if [ "$2" = "-f" ]; then
 			echo "[i] Forcing Update"
 		fi
-		if [ "$localmd5" != "$remotemd5" ] || [ "$2" = "-f" ] && [ "$nolog" != "2" ]; then
-			Log info "New Version Detected - Updating To $remotever (${remotemd5})"
+
+		Log info "New Version Detected - Updating To $remotever (${remotemd5})"
 			echo "[i] Saving Changes"
 			Save_IPSets
 			echo "[i] Unloading Skynet Components"
@@ -5209,7 +5228,6 @@ case "$1" in
 			Log info "Restarting Firewall Service"
 			service restart_firewall >/dev/null 2>&1
 			echo; exit 0
-		fi
 	;;
 
 	settings)
@@ -5218,7 +5236,7 @@ case "$1" in
 				case "$3" in
 					enable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						autoupdate="enabled"
 						Unload_Cron "checkupdate"
@@ -5227,7 +5245,7 @@ case "$1" in
 					;;
 					disable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						autoupdate="disabled"
 						Unload_Cron "autoupdate"
@@ -5243,7 +5261,7 @@ case "$1" in
 				case "$3" in
 					daily)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						banmalwareupdate="daily"
 						forcebanmalwareupdate="enabled"
@@ -5253,7 +5271,7 @@ case "$1" in
 					;;
 					weekly)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						banmalwareupdate="weekly"
 						forcebanmalwareupdate="enabled"
@@ -5263,7 +5281,7 @@ case "$1" in
 					;;
 					disable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						banmalwareupdate="disabled"
 						Unload_Cron "banmalware"
@@ -5278,7 +5296,7 @@ case "$1" in
 				case "$3" in
 					enable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						logmode="enabled"
 						Unload_LogIPTables
@@ -5287,7 +5305,7 @@ case "$1" in
 					;;
 					disable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						logmode="disabled"
 						Unload_LogIPTables
@@ -5302,7 +5320,7 @@ case "$1" in
 				case "$3" in
 					enable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						loginvalid="enabled"
 						Unload_LogIPTables
@@ -5311,7 +5329,7 @@ case "$1" in
 					;;
 					disable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						loginvalid="disabled"
 						Unload_LogIPTables
@@ -5327,14 +5345,14 @@ case "$1" in
 				case "$3" in
 					10)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						logsize="10"
 						Purge_Logs
 						echo "[i] Log Size Set To 10MB"
 					;;
 					*)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						if Is_Numeric "$3"; then
 							if [ "$3" -lt 10 ]; then 
 								echo "[*] $3 Is Not A Valid Size - Must Be At Least 10MB"
@@ -5354,7 +5372,7 @@ case "$1" in
 				case "$3" in
 					all)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						filtertraffic="all"
 						Unload_IPTables
@@ -5368,7 +5386,7 @@ case "$1" in
 					;;
 					inbound)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						filtertraffic="inbound"
 						Unload_IPTables
@@ -5381,7 +5399,7 @@ case "$1" in
 					;;
 					outbound)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						filtertraffic="outbound"
 						Unload_IPTables
@@ -5401,7 +5419,7 @@ case "$1" in
 				case "$3" in
 					enable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						unbanprivateip="enabled"
 						echo "[i] Unban Private IP Enabled"
@@ -5409,7 +5427,7 @@ case "$1" in
 					;;
 					disable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						unbanprivateip="disabled"
 						echo "[i] Unban Private IP Disabled"
@@ -5423,7 +5441,7 @@ case "$1" in
 				case "$3" in
 					enable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						if ! Check_Connection; then echo "[*] Connection Error Detected - Exiting"; echo; exit 1; fi
 						Purge_Logs
 						banaiprotect="enabled"
@@ -5432,7 +5450,7 @@ case "$1" in
 					;;
 					disable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						banaiprotect="disabled"
 						sed '\~add Skynet-Blacklist ~!d;\~BanAiProtect~!d;s~ comment.*~~;s~add~del~g' "$skynetipset" | ipset restore -!
@@ -5449,7 +5467,7 @@ case "$1" in
 				case "$3" in
 					enable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						securemode="enabled"
 						Check_Security
@@ -5457,7 +5475,7 @@ case "$1" in
 					;;
 					disable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						securemode="disabled"
 						echo "[i] Secure Mode Disabled"
@@ -5471,7 +5489,7 @@ case "$1" in
 				case "$3" in
 					enable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						extendedstats="enabled"
 						Check_Security
@@ -5479,7 +5497,7 @@ case "$1" in
 					;;
 					disable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						extendedstats="disabled"
 						echo "[i] Extended Stats Disabled"
@@ -5491,7 +5509,7 @@ case "$1" in
 			;;
 			syslog)
 				Check_Lock "$@"
-				if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+				Verify_Skynet_State
 				if [ -z "$3" ]; then echo "[*] Sysloc Location Not Specified - Exiting"; echo; exit 1; fi
 				case "$3" in
 					default)
@@ -5505,7 +5523,7 @@ case "$1" in
 			;;
 			syslog1)
 				Check_Lock "$@"
-				if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+				Verify_Skynet_State
 				if [ -z "$3" ]; then echo "[*] Syslog-1 Location Not Specified - Exiting"; echo; exit 1; fi
 				case "$3" in
 					default)
@@ -5519,7 +5537,7 @@ case "$1" in
 			;;
 			iot)
 				Check_Lock "$@"
-				if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+				Verify_Skynet_State
 				if [ -z "$3" ]; then echo "[*] Option Not Specified - Exiting"; echo; exit 1; fi
 				case "$3" in
 					unban)
@@ -5652,7 +5670,7 @@ case "$1" in
 					case "$4" in
 						udp)
 							Check_Lock "$@"
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							Purge_Logs
 							Unload_IOTTables
 							iotproto="udp"
@@ -5661,7 +5679,7 @@ case "$1" in
 						;;
 						tcp)
 							Check_Lock "$@"
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							Purge_Logs
 							Unload_IOTTables
 							iotproto="tcp"
@@ -5670,7 +5688,7 @@ case "$1" in
 						;;
 						all)
 							Check_Lock "$@"
-							if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+							Verify_Skynet_State
 							Purge_Logs
 							Unload_IOTTables
 							iotproto="all"
@@ -5700,7 +5718,7 @@ case "$1" in
 				case "$3" in
 					enable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						iotlogging="enabled"
 						Unload_LogIPTables
@@ -5709,7 +5727,7 @@ case "$1" in
 					;;
 					disable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						iotlogging="disabled"
 						Unload_LogIPTables
@@ -5725,14 +5743,14 @@ case "$1" in
 				case "$3" in
 					enable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						lookupcountry="enabled"
 						echo "[i] Country Lookups For Stat Data Enabled"
 					;;
 					disable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						lookupcountry="disabled"
 						echo "[i] Country Lookups For Stat Data Disabled"
@@ -5746,7 +5764,7 @@ case "$1" in
 				case "$3" in
 					enable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						cdnwhitelist="enabled"
 						Whitelist_CDN
@@ -5754,7 +5772,7 @@ case "$1" in
 					;;
 					disable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						cdnwhitelist="disabled"
 						Whitelist_CDN
@@ -5769,7 +5787,7 @@ case "$1" in
 				case "$3" in
 					enable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						if nvram get rc_support | grep -qF "am_addons"; then
 							displaywebui="enabled"
@@ -5783,7 +5801,7 @@ case "$1" in
 					;;
 					disable)
 						Check_Lock "$@"
-						if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+						Verify_Skynet_State
 						Purge_Logs
 						Uninstall_WebUI_Page
 						displaywebui="disabled"
@@ -5796,7 +5814,7 @@ case "$1" in
 			;;
 			switchswap)
 				Check_Lock "$@"
-				if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+				Verify_Skynet_State
 				Purge_Logs
 
 				if grep -qE "swapon .* # Skynet" /jffs/scripts/post-mount 2>/dev/null; then
@@ -5868,7 +5886,7 @@ case "$1" in
 	debug)
 		case "$2" in
 			watch)
-				if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+				Verify_Skynet_State
 				if [ "$logmode" = "disabled" ]; then echo "[*] Logging Is Disabled - Exiting!"; echo; exit 2; fi
 				trap 'echo;echo;echo "[*] Interrupted"; break; Purge_Logs' INT
 				echo "[i] Watching Syslog For Log Entries (ctrl +c) To Stop"
@@ -6348,7 +6366,7 @@ case "$1" in
 			;;
 			backup)
 				Check_Lock "$@"
-				if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+				Verify_Skynet_State
 				Purge_Logs
 				echo "[i] Saving Changes"
 				Save_IPSets
@@ -6361,7 +6379,7 @@ case "$1" in
 			;;
 			restore)
 				Check_Lock "$@"
-				if ! Check_IPSets || ! Check_IPTables; then echo "[*] Skynet Not Running - Exiting"; echo; exit 1; fi
+				Verify_Skynet_State
 				backuplocation="${skynetloc}/Skynet-Backup.tar.gz"
 				if [ ! -f "$backuplocation" ]; then
 					Prompt_Typed "backuplocation" "Location" "[*] Skynet Backup Doesn't Exist In Expected Path, Please Provide Location"
