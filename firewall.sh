@@ -1065,8 +1065,8 @@ Display_Result() {
 
 Command_Not_Recognized() {
 	Ylow "Command Not Recognized, Please Try Again"
-	Ylow "For Help:   https://github.com/underd0se/Skynet-Zero#help"
-	Ylow "Common Issues: https://github.com/underd0se/Skynet-Zero/wiki#common-issues"
+	Ylow "For Help:   https://github.com/Adamm00/IPSet_ASUS#help"
+	Ylow "Common Issues: https://github.com/Adamm00/IPSet_ASUS/wiki#common-issues"
 	echo
 	exit 2
 }
@@ -6682,7 +6682,7 @@ case "$1" in
 
 	uninstall)
 		echo "If You Were Experiencing Issues, Try Update Or Visit SNBForums/Github For Support"
-		echo "https://github.com/underd0se/Skynet-Zero"
+		echo "https://github.com/Adamm00/IPSet_ASUS"
 		echo
 		while true; do
 			Show_Menu "Warning - This Will Delete All Files In The Skynet Directory. Are You Sure You Want To Uninstall?" \
@@ -6772,8 +6772,8 @@ case "$1" in
 	;;
 	*)
 		Ylow "Command Not Recognized, Please Try Again"
-		Ylow "For Help:   https://github.com/underd0se/Skynet-Zero#help"
-		Ylow "Common Issues: https://github.com/underd0se/Skynet-Zero/wiki#common-issues"
+		Ylow "For Help:   https://github.com/Adamm00/IPSet_ASUS#help"
+		Ylow "Common Issues: https://github.com/Adamm00/IPSet_ASUS/wiki#common-issues"
 	;;
 esac
 
