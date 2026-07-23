@@ -10,7 +10,7 @@
 #                                                                                                           #
 #                                 Router Firewall And Security Enhancements                                 #
 #                      By Adamm (Forked by underd0se) -  https://github.com/underd0se/Skynet-Zero           #
-#                                      20/07/2026 - v8.1.1 (Zero Swap)                                      #
+#                                    23/07/2026 - v8.1.1-sz.1 (Zero Swap)                                   #
 #############################################################################################################
 # amtm NoMD5check
 
@@ -1065,7 +1065,7 @@ Command_Not_Recognized() {
 }
 
 Filter_Version() {
-	grep -m1 -oE 'v[0-9]{1,2}([.][0-9]{1,2})([.][0-9]{1,2})'
+	grep -m1 -oE 'v[0-9]{1,2}([.][0-9]{1,2})([.][0-9]{1,2})([-a-zA-Z0-9.]+)?'
 }
 
 Filter_Date() {
