@@ -5217,10 +5217,11 @@ case "$1" in
 			exit 0
 		fi
 		if echo "$localver" | grep -q -e "-dev"; then
-			remotedir="https://raw.githubusercontent.com/underd0se/Skynet-Zero/development"
+			skynet_branch="development"
 		else
-			remotedir="https://raw.githubusercontent.com/underd0se/Skynet-Zero/master"
+			skynet_branch="master"
 		fi
+		remotedir="https://raw.githubusercontent.com/underd0se/Skynet-Zero/${skynet_branch}"
 		remotever="$(curl -fsL --retry 3 --max-time 6 "$remotedir/firewall.sh" | Filter_Version)"
 		localmd5="$(md5sum "$0" | awk '{print $1}')"
 		remotemd5="$(curl -fsL --retry 3 --max-time 6 "${remotedir}/firewall.sh" | md5sum | awk '{print $1}')"
@@ -5257,7 +5258,7 @@ case "$1" in
 			Download_File "webui/chartjs-plugin-zoom.js" "${skynetloc}/webui/chartjs-plugin-zoom.js" "$2"
 			Download_File "webui/hammerjs.js" "${skynetloc}/webui/hammerjs.js" "$2"
 			Download_File "webui/skynet.asp" "${skynetloc}/webui/skynet.asp" "$2"
-			remotedir="https://raw.githubusercontent.com/underd0se/Skynet-Zero/master"
+			remotedir="https://raw.githubusercontent.com/underd0se/Skynet-Zero/${skynet_branch}"
 			Download_File "firewall.sh" "$0" "$2"
 			Log info "Restarting Firewall Service"
 			service restart_firewall >/dev/null 2>&1
