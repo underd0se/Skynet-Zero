@@ -5216,7 +5216,11 @@ case "$1" in
 		if [ "$1" = "amtmupdate" ] && [ "$2" = "check" ]; then
 			exit 0
 		fi
-		remotedir="https://raw.githubusercontent.com/underd0se/Skynet-Zero/master"
+		if echo "$localver" | grep -q -e "-dev"; then
+			remotedir="https://raw.githubusercontent.com/underd0se/Skynet-Zero/development"
+		else
+			remotedir="https://raw.githubusercontent.com/underd0se/Skynet-Zero/master"
+		fi
 		remotever="$(curl -fsL --retry 3 --max-time 6 "$remotedir/firewall.sh" | Filter_Version)"
 		localmd5="$(md5sum "$0" | awk '{print $1}')"
 		remotemd5="$(curl -fsL --retry 3 --max-time 6 "${remotedir}/firewall.sh" | md5sum | awk '{print $1}')"
