@@ -7,7 +7,7 @@ Skynet Zero is an optimized version of the Asuswrt-Merlin firewall script design
 ## Development Changelog
 
 ### v1.0.3-dev
-- **2026-07-27**: Optimized security loops using single-pass `awk` arrays (yields ~70% speedup).
+- **2026-07-27**: Merged `feature/awk-optimization` branch (single-pass awk arrays yielding ~70% speedup).
 - **2026-07-27**: Added safe purge of legacy unmount injections for Zero Swap users, protecting third-party swaps.
 - **2026-07-27**: Updated ASCII UI header to feature minimalist `ZER0` branding.
 - **2026-07-21**: Enforced strict USB-only installation to protect internal JFFS flash.
