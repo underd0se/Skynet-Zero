@@ -6,6 +6,9 @@ Skynet Zero is an optimized version of the Asuswrt-Merlin firewall script design
 
 ## Development Changelog
 
+### v1.1.0-dev
+- **2026-07-27**: Implemented full Zero-Storage Direct Streaming Pipeline (fixed stats to extract from kernel RAM, bypassed /tmp writes for custom list imports).
+
 ### v1.0.4-dev
 - **2026-07-27**: Merged `feature/awk-optimization` branch (single-pass awk arrays yielding ~70% speedup).
 
