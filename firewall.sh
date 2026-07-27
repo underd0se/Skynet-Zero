@@ -1827,19 +1827,39 @@ Run_Stats() {
 			Display_Header "10"
 			Red "Exact Matches;"
 			Display_Header "5"
-			cwd="$(pwd)"
-			cd "${skynetloc}/lists" || exit 1
-			grep -HE "^$ip$" -- * | while IFS= read -r "list" && [ -n "$list" ]; do
-				printf '%-20s | %-40s\n' "$(echo "$list" | cut -d ':' -f2-)" "$(grep -F "$(echo "$list" | cut -d ':' -f1)" /jffs/addons/shared-whitelists/shared-Skynet-whitelist)"
-			done
+			# Extract exact IP match from kernel memory
+			local exact_match
+			exact_match="$(ipset save Skynet-Blacklist | grep -E " $ip ")"
+			if [ -n "$exact_match" ]; then
+				local comment
+				comment="$(echo "$exact_match" | grep -oE 'comment ".*"' | cut -d '"' -f2)"
+				if echo "$comment" | grep -q "BanMalware: "; then
+					local filename url
+					filename="$(echo "$comment" | cut -d ' ' -f2-)"
+					url="$(grep -E " $filename$" /tmp/skynet/skynet.manifest | head -1 | awk '{print $1}')"
+					printf '%-20s | %-40s\n' "$ip" "${url:-$filename}"
+				else
+					printf '%-20s | %-40s\n' "$ip" "$comment"
+				fi
+			fi
 			printf '   \b\b\b\n\n'
 			Red "Possible CIDR Matches;"
 			Display_Header "5"
-			grep -HE "^$(echo "$ip" | cut -d '.' -f1-3)\..*/" -- * | while IFS= read -r "list" && [ -n "$list" ]; do
-				printf '%-20s | %-40s\n' "$(echo "$list" | cut -d ':' -f2-)" "$(grep -F "$(echo "$list" | cut -d ':' -f1)" /jffs/addons/shared-whitelists/shared-Skynet-whitelist)"
+			local ip_prefix
+			ip_prefix="$(echo "$ip" | cut -d '.' -f1-3)"
+			ipset save Skynet-BlockedRanges | grep -E " ${ip_prefix}\.[0-9]+/[0-9]+" | while IFS= read -r line; do
+				local range comment filename url
+				range="$(echo "$line" | awk '{print $3}')"
+				comment="$(echo "$line" | grep -oE 'comment ".*"' | cut -d '"' -f2)"
+				if echo "$comment" | grep -q "BanMalware: "; then
+					filename="$(echo "$comment" | cut -d ' ' -f2-)"
+					url="$(grep -E " $filename$" /tmp/skynet/skynet.manifest | head -1 | awk '{print $1}')"
+					printf '%-20s | %-40s\n' "$range" "${url:-$filename}"
+				else
+					printf '%-20s | %-40s\n' "$range" "$comment"
+				fi
 			done
 			printf '   \b\b\b'
-			cd "$cwd" || exit 1
 			;;
 		manualbans)
 			if [ "$4" -eq "$4" ] 2>/dev/null; then counter="$4"; fi
@@ -5223,10 +5243,7 @@ banmalware | fs)
 	Display_Message "[i] Start Blacklist Consolidation"
 	echo
 
-	rm -rf "${skynetloc}"/lists/*
-	mkdir -p "${skynetloc}/lists"
-	cwd="$(pwd)"
-	cd "${skynetloc}/lists" || exit 1
+	# Zero-Storage Direct Streaming Pipeline begins here
 
 	# Build manifest: "url filename" (dedupe URLs, auto-suffix duplicate basenames)
 	awk '
@@ -5525,39 +5542,45 @@ import)
 		echo "[i] This Function Extracts All IPs And Adds Them ALL To Blacklist"
 		if [ -f "$3" ]; then
 			echo "[i] Local Custom List Detected: $3"
-			grep -E '^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-2]))?)$' "$3" >/tmp/skynet/iplist-unfiltered.txt
+			stream_cmd="cat \"$3\""
 		elif [ -n "$3" ]; then
 			echo "[i] Remote Custom List Detected: $3"
-			curl -fsSL --retry 3 --max-time 6 "$3" | dos2unix | grep -E '^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-2]))?)$' >/tmp/skynet/iplist-unfiltered.txt || {
+			if ! curl -fsSI "$3" >/dev/null; then
 				echo "[*] 404 Error Detected - Stopping Import"
-				rm -rf /tmp/skynet/iplist-unfiltered.txt
 				echo
 				exit 1
-			}
+			fi
+			stream_cmd="curl -fsSL --retry 3 --max-time 6 \"$3\""
 		else
 			echo "[*] URL/File Field Can't Be Empty - Please Try Again"
 			echo
 			exit 2
 		fi
-		dos2unix /tmp/skynet/iplist-unfiltered.txt
-		if ! Is_IPRange </tmp/skynet/iplist-unfiltered.txt; then
-			echo "[*] No Content Detected - Stopping Import"
-			rm -rf /tmp/skynet/iplist-unfiltered.txt
-			echo
-			exit 1
-		fi
+
 		echo "[i] Processing List"
 		if [ -n "$4" ] && [ "${#4}" -le "245" ]; then
-			Filter_PrivateIP </tmp/skynet/iplist-unfiltered.txt | awk -v desc="Imported: $4" '/^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(32))?)$/{printf "add Skynet-Blacklist %s comment \"%s\"\n", $1, desc }' >/tmp/skynet/iplist-filtered.txt
-			Filter_PrivateIP </tmp/skynet/iplist-unfiltered.txt | awk -v desc="Imported: $4" '/^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-1])){1})$/{printf "add Skynet-BlockedRanges %s comment \"%s\"\n", $1, desc }' >>/tmp/skynet/iplist-filtered.txt
+			desc="Imported: $4"
 		else
-			imptime="$(date +"%b %e %T")"
-			Filter_PrivateIP </tmp/skynet/iplist-unfiltered.txt | awk -v desc="Imported: $imptime" '/^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(32))?)$/{printf "add Skynet-Blacklist %s comment \"%s\"\n", $1, desc }' >/tmp/skynet/iplist-filtered.txt
-			Filter_PrivateIP </tmp/skynet/iplist-unfiltered.txt | awk -v desc="Imported: $imptime" '/^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-1])){1})$/{printf "add Skynet-BlockedRanges %s comment \"%s\"\n", $1, desc }' >>/tmp/skynet/iplist-filtered.txt
+			desc="Imported: $(date +"%b %e %T")"
 		fi
-		echo "[i] Adding IPs To Blacklist"
-		ipset restore -! -f "/tmp/skynet/iplist-filtered.txt"
-		rm -rf /tmp/skynet/iplist-unfiltered.txt /tmp/skynet/iplist-filtered.txt
+
+		# Zero-Storage Direct Streaming Pipeline
+		eval "$stream_cmd" | dos2unix | grep -E '^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-2]))?)$' | Filter_PrivateIP | awk -v desc="$desc" '
+			{
+				if ($1 ~ /^([0-9]{1,3}\.){3}[0-9]{1,3}(\/(32))?$/) {
+					print "add Skynet-Blacklist "$1" comment \"" desc "\""
+				} else {
+					print "add Skynet-BlockedRanges "$1" comment \"" desc "\""
+				}
+				valid++
+			}
+			END { if (valid == 0) exit 1 }
+		' | ipset restore -! || {
+			echo "[*] No Content Detected - Stopping Import"
+			echo
+			exit 1
+		}
+
 		echo "[i] Saving Changes"
 		Save_IPSets
 		;;
@@ -5577,37 +5600,42 @@ import)
 		echo "[i] This Function Extracts All IPs And Adds Them ALL To Whitelist"
 		if [ -f "$3" ]; then
 			echo "[i] Local Custom List Detected: $3"
-			grep -E '^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-2]))?)$' "$3" >/tmp/skynet/iplist-unfiltered.txt
+			stream_cmd="cat \"$3\""
 		elif [ -n "$3" ]; then
 			echo "[i] Remote Custom List Detected: $3"
-			curl -fsSL --retry 3 --max-time 6 "$3" | dos2unix | grep -E '^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-2]))?)$' >/tmp/skynet/iplist-unfiltered.txt || {
+			if ! curl -fsSI "$3" >/dev/null; then
 				echo "[*] 404 Error Detected - Stopping Import"
-				rm -rf /tmp/skynet/iplist-unfiltered.txt
 				echo
 				exit 1
-			}
+			fi
+			stream_cmd="curl -fsSL --retry 3 --max-time 6 \"$3\""
 		else
 			echo "[*] URL/File Field Can't Be Empty - Please Try Again"
 			echo
 			exit 2
 		fi
-		dos2unix /tmp/skynet/iplist-unfiltered.txt
-		if ! Is_IPRange </tmp/skynet/iplist-unfiltered.txt; then
-			echo "[*] No Content Detected - Stopping Import"
-			rm -rf /tmp/skynet/iplist-unfiltered.txt
-			echo
-			exit 1
-		fi
+
 		echo "[i] Processing List"
 		if [ -n "$4" ] && [ "${#4}" -le "245" ]; then
-			Filter_PrivateIP </tmp/skynet/iplist-unfiltered.txt | awk -v desc="Imported: $4" '{printf "add Skynet-Whitelist %s comment \"%s\"\n", $1, desc }' >/tmp/skynet/iplist-filtered.txt
+			desc="Imported: $4"
 		else
-			imptime="$(date +"%b %e %T")"
-			Filter_PrivateIP </tmp/skynet/iplist-unfiltered.txt | awk -v desc="Imported: $imptime" '{printf "add Skynet-Whitelist %s comment \"%s\"\n", $1, desc }' >/tmp/skynet/iplist-filtered.txt
+			desc="Imported: $(date +"%b %e %T")"
 		fi
+
+		# Zero-Storage Direct Streaming Pipeline
+		eval "$stream_cmd" | dos2unix | grep -E '^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-2]))?)$' | Filter_PrivateIP | awk -v desc="$desc" '
+			{
+				print "add Skynet-Whitelist "$1" comment \"" desc "\""
+				valid++
+			}
+			END { if (valid == 0) exit 1 }
+		' | ipset restore -! || {
+			echo "[*] No Content Detected - Stopping Import"
+			echo
+			exit 1
+		}
+
 		echo "[i] Adding IPs To Whitelist"
-		ipset restore -! -f "/tmp/skynet/iplist-filtered.txt"
-		rm -rf /tmp/skynet/iplist-unfiltered.txt /tmp/skynet/iplist-filtered.txt
 		echo "[i] Saving Changes"
 		Save_IPSets
 		;;
@@ -5635,34 +5663,41 @@ deport)
 		echo "[i] This Function Extracts All IPs And Removes Them ALL From Blacklist"
 		if [ -f "$3" ]; then
 			echo "[i] Local Custom List Detected: $3"
-			grep -E '^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-2]))?)$' "$3" >/tmp/skynet/iplist-unfiltered.txt
+			stream_cmd="cat \"$3\""
 		elif [ -n "$3" ]; then
 			echo "[i] Remote Custom List Detected: $3"
-			curl -fsSL --retry 3 --max-time 6 "$3" | dos2unix | grep -E '^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-2]))?)$' >/tmp/skynet/iplist-unfiltered.txt || {
+			if ! curl -fsSI "$3" >/dev/null; then
 				echo "[*] 404 Error Detected - Stopping Import"
-				rm -rf /tmp/skynet/iplist-unfiltered.txt
 				echo
 				exit 1
-			}
+			fi
+			stream_cmd="curl -fsSL --retry 3 --max-time 6 \"$3\""
 		else
 			echo "[*] URL/File Field Can't Be Empty - Please Try Again"
 			echo
 			exit 2
 		fi
-		dos2unix /tmp/skynet/iplist-unfiltered.txt
-		if ! Is_IPRange </tmp/skynet/iplist-unfiltered.txt; then
+
+		echo "[i] Processing List"
+
+		# Zero-Storage Direct Streaming Pipeline
+		eval "$stream_cmd" | dos2unix | grep -E '^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-2]))?)$' | Filter_PrivateIP | awk '
+			{
+				if ($1 ~ /^([0-9]{1,3}\.){3}[0-9]{1,3}(\/(32))?$/) {
+					print "del Skynet-Blacklist "$1
+				} else {
+					print "del Skynet-BlockedRanges "$1
+				}
+				valid++
+			}
+			END { if (valid == 0) exit 1 }
+		' | ipset restore -! || {
 			echo "[*] No Content Detected - Stopping Deport"
-			rm -rf /tmp/skynet/iplist-unfiltered.txt
 			echo
 			exit 1
-		fi
-		echo "[i] Processing IPv4 Addresses"
-		Filter_PrivateIP </tmp/skynet/iplist-unfiltered.txt | awk '/^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(32))?)$/{printf "del Skynet-Blacklist %s\n", $1}' >/tmp/skynet/iplist-filtered.txt
-		echo "[i] Processing IPv4 Ranges"
-		Filter_PrivateIP </tmp/skynet/iplist-unfiltered.txt | awk '/^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-1])){1})$/{printf "del Skynet-BlockedRanges %s\n", $1}' >>/tmp/skynet/iplist-filtered.txt
+		}
+
 		echo "[i] Removing IPs From Blacklist"
-		ipset restore -! -f "/tmp/skynet/iplist-filtered.txt"
-		rm -rf /tmp/skynet/iplist-unfiltered.txt /tmp/skynet/iplist-filtered.txt
 		echo "[i] Saving Changes"
 		Save_IPSets
 		;;
