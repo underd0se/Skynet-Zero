@@ -5209,6 +5209,62 @@ case "$1" in
 		nolog="2"
 	;;
 
+	--development)
+		Check_Lock "$@"
+		if ! Check_Connection; then echo "[*] Connection Error Detected - Exiting"; echo; exit 1; fi
+		if Filter_Version < "$0" | grep -q -e "-dev"; then echo "[*] Already on development branch - Exiting"; echo; exit 0; fi
+		Log info "Switching to development branch"
+		echo "[i] Saving Changes"
+		Save_IPSets
+		echo "[i] Unloading Skynet Components"
+		Unload_Cron "all"
+		Unload_IPTables
+		Unload_IOTTables
+		Unload_LogIPTables
+		Unload_IPSets
+		iptables -t raw -F
+		Uninstall_WebUI_Page
+		mkdir -p "${skynetloc}/webui"
+		remotedir="https://raw.githubusercontent.com/Adamm00/IPSet_ASUS/master"
+		Download_File "webui/chart.js" "${skynetloc}/webui/chart.js" "-f"
+		Download_File "webui/chartjs-plugin-zoom.js" "${skynetloc}/webui/chartjs-plugin-zoom.js" "-f"
+		Download_File "webui/hammerjs.js" "${skynetloc}/webui/hammerjs.js" "-f"
+		Download_File "webui/skynet.asp" "${skynetloc}/webui/skynet.asp" "-f"
+		remotedir="https://raw.githubusercontent.com/underd0se/Skynet-Zero/development"
+		Download_File "firewall.sh" "$0" "-f"
+		Log info "Restarting Firewall Service"
+		service restart_firewall >/dev/null 2>&1
+		echo; exit 0
+	;;
+
+	--master)
+		Check_Lock "$@"
+		if ! Check_Connection; then echo "[*] Connection Error Detected - Exiting"; echo; exit 1; fi
+		if ! Filter_Version < "$0" | grep -q -e "-dev"; then echo "[*] Already on master branch - Exiting"; echo; exit 0; fi
+		Log info "Switching to master branch"
+		echo "[i] Saving Changes"
+		Save_IPSets
+		echo "[i] Unloading Skynet Components"
+		Unload_Cron "all"
+		Unload_IPTables
+		Unload_IOTTables
+		Unload_LogIPTables
+		Unload_IPSets
+		iptables -t raw -F
+		Uninstall_WebUI_Page
+		mkdir -p "${skynetloc}/webui"
+		remotedir="https://raw.githubusercontent.com/Adamm00/IPSet_ASUS/master"
+		Download_File "webui/chart.js" "${skynetloc}/webui/chart.js" "-f"
+		Download_File "webui/chartjs-plugin-zoom.js" "${skynetloc}/webui/chartjs-plugin-zoom.js" "-f"
+		Download_File "webui/hammerjs.js" "${skynetloc}/webui/hammerjs.js" "-f"
+		Download_File "webui/skynet.asp" "${skynetloc}/webui/skynet.asp" "-f"
+		remotedir="https://raw.githubusercontent.com/underd0se/Skynet-Zero/master"
+		Download_File "firewall.sh" "$0" "-f"
+		Log info "Restarting Firewall Service"
+		service restart_firewall >/dev/null 2>&1
+		echo; exit 0
+	;;
+
 	update|amtmupdate)
 		Check_Lock "$@"
 		if ! Check_Connection; then echo "[*] Connection Error Detected - Exiting"; echo; exit 1; fi
