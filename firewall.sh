@@ -2362,30 +2362,23 @@ Get_LocalName() {
 Manage_Device() {
 	echo "[i] Looking for available partitions"
 
-	# Build $@ = list of mountpoints whose fs is ext2/3/4, vfat, exfat, ntfs, jffs2 or ubifs
+	# Build $@ = list of mountpoints whose fs is ext2/3/4, vfat, exfat, ntfs
 	set --
 	while read -r _ mnt fs _; do
 		case "$fs" in
 			ext2|ext3|ext4|tfat|exfat)
 				set -- "$@" "$mnt"
 				;;
-			jffs2|ubifs)
-				if [ "$mnt" = "/jffs" ]; then
-					set -- "$@" "$mnt"
-				fi
-				;;
 		esac
 	done < /proc/mounts
 
-	# If none found, fallback to /jffs
+	# If none found, exit immediately
 	if [ $# -eq 0 ]; then
-		if [ -d "/jffs" ]; then
-			set -- "/jffs"
-		else
-			echo "[*] No compatible USB partitions or /jffs found - exiting!"
-			echo
-			exit 1
-		fi
+		echo "[*] No compatible USB partitions found!"
+		echo "[*] A mounted USB drive is strictly required to protect your router's internal flash memory from degradation."
+		echo "[*] Exiting!"
+		echo
+		exit 1
 	fi
 
 	# Display numbered list
