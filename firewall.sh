@@ -215,7 +215,7 @@ Check_Settings() {
 		exit 1
 	else
 		# warn if too small (<1GB)
-		swap_kb=$(du -k "$swaplocation" 2>/dev/null | awk '{s+=$1} END {print s+0}') || swap_kb=0
+		swap_kb=$(du -k "$swaplocation" 2>/dev/null | awk '{print $1}') || swap_kb=0
 		if [ "$swap_kb" -gt 0 ] && [ "$swap_kb" -lt 1048576 ]; then
 			Log error -s "SWAP File Too Small (<1GB) - Please Fix Immediately!"
 		fi
@@ -1321,11 +1321,11 @@ Whitelist_Shared() {
 	add Skynet-Whitelist $(nvram get wan_dns2_x) comment \"nvram: wan_dns2_x\"
 	add Skynet-Whitelist $(nvram get wan0_dns1_x) comment \"nvram: wan0_dns1_x\"
 	add Skynet-Whitelist $(nvram get wan0_dns2_x) comment \"nvram: wan0_dns2_x\"
-	add Skynet-Whitelist $(nvram get wan_dns | awk '{s+=$1} END {print s+0}') comment \"nvram: wan_dns\"
+	add Skynet-Whitelist $(nvram get wan_dns | awk '{print $1}') comment \"nvram: wan_dns\"
 	add Skynet-Whitelist $(nvram get wan_dns | awk '{print $2}') comment \"nvram: wan_dns\"
-	add Skynet-Whitelist $(nvram get wan0_dns | awk '{s+=$1} END {print s+0}') comment \"nvram: wan0_dns\"
+	add Skynet-Whitelist $(nvram get wan0_dns | awk '{print $1}') comment \"nvram: wan0_dns\"
 	add Skynet-Whitelist $(nvram get wan0_dns | awk '{print $2}') comment \"nvram: wan0_dns\"
-	add Skynet-Whitelist $(nvram get wan0_xdns | awk '{s+=$1} END {print s+0}') comment \"nvram: wan0_xdns\"
+	add Skynet-Whitelist $(nvram get wan0_xdns | awk '{print $1}') comment \"nvram: wan0_xdns\"
 	add Skynet-Whitelist $(nvram get wan0_xdns | awk '{print $2}') comment \"nvram: wan0_xdns\"
 	add Skynet-Whitelist 192.30.252.0/22 comment \"nvram: Github Content Server\"
 	add Skynet-Whitelist 127.0.0.0/8 comment \"nvram: Localhost\"" | tr -d "\t" | Filter_IPLine | ipset restore -! 2>/dev/null
@@ -1542,7 +1542,7 @@ Run_Stats() {
 	printf '╔═════════════════════ Logging ═════════════════════════════════════════════════════════════════════════════╗\n'
 	printf '║ %-20s │ %-82s ║\n' "Syslog Locations" "$syslogloc $syslog1loc"
 	printf '║ %-20s │ %-82s ║\n' "Skynet Log" "${skynetlog}"
-	SZ="$(du -h "${skynetlog}" | awk '{s+=$1} END {print s+0}')"
+	SZ="$(du -h "${skynetlog}" | awk '{print $1}')"
 	printf '║ └── %-16s │ %-82s ║\n' "Used/Total" "$SZ / ${logsize}MB"
 	Generate_Blocked_Events
 	printf '║ %-20s │ %-82s ║\n' "Manual Bans" "$(grep -Fc "Manual Ban" "$skynetevents")"
@@ -1836,7 +1836,7 @@ Run_Stats() {
 				if echo "$comment" | grep -q "BanMalware: "; then
 					local filename url
 					filename="$(echo "$comment" | cut -d ' ' -f2-)"
-					url="$(grep -E " $filename$" /tmp/skynet/skynet.manifest | head -1 | awk '{s+=$1} END {print s+0}')"
+					url="$(grep -E " $filename$" /tmp/skynet/skynet.manifest | head -1 | awk '{print $1}')"
 					printf '%-20s | %-40s\n' "$ip" "${url:-$filename}"
 				else
 					printf '%-20s | %-40s\n' "$ip" "$comment"
@@ -1853,7 +1853,7 @@ Run_Stats() {
 				comment="$(echo "$line" | grep -oE 'comment ".*"' | cut -d '"' -f2)"
 				if echo "$comment" | grep -q "BanMalware: "; then
 					filename="$(echo "$comment" | cut -d ' ' -f2-)"
-					url="$(grep -E " $filename$" /tmp/skynet/skynet.manifest | head -1 | awk '{s+=$1} END {print s+0}')"
+					url="$(grep -E " $filename$" /tmp/skynet/skynet.manifest | head -1 | awk '{print $1}')"
 					printf '%-20s | %-40s\n' "$range" "${url:-$filename}"
 				else
 					printf '%-20s | %-40s\n' "$range" "$comment"
@@ -2098,7 +2098,7 @@ Generate_Stats() {
 			WriteStats_ToJS "$hits1" "${skynetloc}/webui/stats.js" "SetHits1" "hits1"
 			WriteStats_ToJS "$hits2" "${skynetloc}/webui/stats.js" "SetHits2" "hits2"
 			WriteStats_ToJS "Monitoring From $(grep -m1 -F "BLOCKED -" "$skynetlog" | awk '{printf "%s %s %s\n", $1, $2, $3}') To $(grep -F "BLOCKED -" "$skynetlog" | tail -1 | awk '{printf "%s %s %s\n", $1, $2, $3}')" "${skynetloc}/webui/stats.js" "SetStatsDate" "statsdate"
-			WriteStats_ToJS "Log Size - ($(du -h "$skynetlog" | awk '{s+=$1} END {print s+0}')B)" "${skynetloc}/webui/stats.js" "SetStatsSize" "statssize"
+			WriteStats_ToJS "Log Size - ($(du -h "$skynetlog" | awk '{print $1}')B)" "${skynetloc}/webui/stats.js" "SetStatsSize" "statssize"
 			# Inbound Ports
 			grep -F "INBOUND" "$skynetlog" | grep -oE 'DPT=[0-9]{1,5}' | cut -c 5- | sort -n | uniq -c | sort -nr | head -10 | sed "s~^[ \t]*~~;s~ ~\~~g" >"${skynetloc}/webui/stats/iport.txt"
 			WriteData_ToJS "${skynetloc}/webui/stats/iport.txt" "${skynetloc}/webui/stats.js" "DataInPortHits" "LabelInPortHits"
@@ -6007,8 +6007,8 @@ update | amtmupdate)
 	fi
 	remotedir="https://raw.githubusercontent.com/underd0se/Skynet-Zero/${skynet_branch}"
 	remotever="$(curl -fsL --retry 3 --max-time 6 "$remotedir/firewall.sh" | Filter_Version)"
-	localmd5="$(md5sum "$0" | awk '{s+=$1} END {print s+0}')"
-	remotemd5="$(curl -fsL --retry 3 --max-time 6 "${remotedir}/firewall.sh" | md5sum | awk '{s+=$1} END {print s+0}')"
+	localmd5="$(md5sum "$0" | awk '{print $1}')"
+	remotemd5="$(curl -fsL --retry 3 --max-time 6 "${remotedir}/firewall.sh" | md5sum | awk '{print $1}')"
 	if [ "$localmd5" = "$remotemd5" ] && [ "$2" != "-f" ]; then
 		Log info "Skynet Up To Date - $localver (${localmd5})"
 		nolog="2"
@@ -6552,7 +6552,7 @@ settings)
 		view)
 			Display_Header "6"
 			ip neigh | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3} ' | sort -n -t . -k 1,1 -k 2,2 -k 3,3 -k 4,4 | while IFS= read -r "ip"; do
-				ipaddr="$(echo "$ip" | awk '{s+=$1} END {print s+0}')"
+				ipaddr="$(echo "$ip" | awk '{print $1}')"
 				macaddr="$(echo "$ip" | awk '{print $5}')"
 				Get_LocalName
 				state="$(echo "$ip" | awk '{print $6}')"
@@ -7120,7 +7120,7 @@ debug)
 		printf '║ └── %-16s │ %-82s ║\n' "Used/Total" "$UA"
 		if [ -n "$swaplocation" ]; then
 			printf '║ %-20s │ %-82s ║\n' "SWAP File" "$swaplocation"
-			SZ="$(du -h "$swaplocation" | awk '{s+=$1} END {print s+0}')"
+			SZ="$(du -h "$swaplocation" | awk '{print $1}')"
 			printf '║ └── %-16s │ %-82s ║\n' "Size" "$SZ"
 		fi
 		printf '╚══════════════════════╧════════════════════════════════════════════════════════════════════════════════════╝\n\n\n'
@@ -7137,7 +7137,7 @@ debug)
 		printf '╔═════════════════════ Logging ═════════════════════════════════════════════════════════════════════════════╗\n'
 		printf '║ %-20s │ %-82s ║\n' "Syslog Locations" "$syslogloc $syslog1loc"
 		printf '║ %-20s │ %-82s ║\n' "Skynet Log" "${skynetlog}"
-		SZ="$(du -h "${skynetlog}" | awk '{s+=$1} END {print s+0}')"
+		SZ="$(du -h "${skynetlog}" | awk '{print $1}')"
 		printf '║ └── %-16s │ %-82s ║\n' "Used/Total" "$SZ / ${logsize}MB"
 		if [ -n "$countrylist" ]; then
 			countries="$countrylist"
@@ -7157,7 +7157,7 @@ debug)
 			grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3} ' |
 			sort -n -t . -k 1,1 -k 2,2 -k 3,3 -k 4,4 |
 			while IFS= read -r ip; do
-				ipaddr="$(echo "$ip" | awk '{s+=$1} END {print s+0}')"
+				ipaddr="$(echo "$ip" | awk '{print $1}')"
 				macaddr="$(echo "$ip" | awk '{print $5}')"
 				Get_LocalName
 				state="$(echo "$ip" | awk '{print $6}')"
@@ -7395,7 +7395,7 @@ debug)
 				if [ -n "$findswap" ]; then
 					swaplocation="$findswap"
 				elif [ -z "$findswap" ]; then
-					findswap="$(grep -m1 -F "file" "/proc/swaps" | awk '{s+=$1} END {print s+0}')"
+					findswap="$(grep -m1 -F "file" "/proc/swaps" | awk '{print $1}')"
 					if [ -n "$findswap" ]; then
 						swaplocation="$findswap"
 					else
