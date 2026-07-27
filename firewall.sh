@@ -364,12 +364,13 @@ Check_Files() {
 			>> /jffs/scripts/service-event
 	fi
 
-	# 3) unmount: ensure swapoff entry only if swap is actually configured
+	# 3) unmount: ensure swapoff entry only if Skynet swap is configured
 	if grep -q 'swapon .*/myswap\.swp # Skynet' /jffs/scripts/post-mount 2>/dev/null; then
-		if ! grep -qE '^swapoff ' /jffs/scripts/unmount 2>/dev/null; then
-			sed -i '\~swapoff ~d' /jffs/scripts/unmount 2>/dev/null
+		if ! grep -q 'swapoff -a 2>/dev/null # Skynet' /jffs/scripts/unmount 2>/dev/null; then
 			echo 'swapoff -a 2>/dev/null # Skynet' >> /jffs/scripts/unmount
 		fi
+	else
+		sed -i '\~swapoff -a 2>/dev/null # Skynet~d' /jffs/scripts/unmount 2>/dev/null
 	fi
 
 	# 4) services-stop: ensure firewall‑save alias
@@ -2478,7 +2479,7 @@ Create_Swap() {
 	sed -i "2i [ -f \"\$1/myswap.swp\" ] && swapon \$1/myswap.swp # Skynet" /jffs/scripts/post-mount
 
 	# 6) Ensure unmount script will turn it off
-	if [ -f /jffs/scripts/unmount ] && ! grep -q '^swapoff ' /jffs/scripts/unmount; then
+	if [ -f /jffs/scripts/unmount ] && ! grep -q 'swapoff -a 2>/dev/null # Skynet' /jffs/scripts/unmount; then
 		echo 'swapoff -a 2>/dev/null # Skynet' >> /jffs/scripts/unmount
 	fi
 
