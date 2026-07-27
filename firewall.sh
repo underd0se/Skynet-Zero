@@ -364,10 +364,12 @@ Check_Files() {
 			>> /jffs/scripts/service-event
 	fi
 
-	# 3) unmount: ensure swapoff entry
-	if ! grep -qE '^swapoff ' /jffs/scripts/unmount; then
-		sed -i '\~swapoff ~d' /jffs/scripts/unmount
-		echo 'swapoff -a 2>/dev/null # Skynet' >> /jffs/scripts/unmount
+	# 3) unmount: ensure swapoff entry only if swap is actually configured
+	if grep -q 'swapon .*/myswap\.swp # Skynet' /jffs/scripts/post-mount 2>/dev/null; then
+		if ! grep -qE '^swapoff ' /jffs/scripts/unmount 2>/dev/null; then
+			sed -i '\~swapoff ~d' /jffs/scripts/unmount 2>/dev/null
+			echo 'swapoff -a 2>/dev/null # Skynet' >> /jffs/scripts/unmount
+		fi
 	fi
 
 	# 4) services-stop: ensure firewall‑save alias
@@ -6823,8 +6825,11 @@ case "$1" in
 					Unload_IPSets
 					Uninstall_WebUI_Page
 					nvram set fw_log_x=none
+					nvram unset skynet_old_swappiness
+					nvram unset skynet_old_overcommit
+					nvram commit
 					echo "[i] Deleting Skynet Files"
-					sed -i '\~# Skynet~d' /jffs/scripts/firewall-start /jffs/scripts/services-stop /jffs/scripts/service-event /jffs/configs/profile.add /jffs/configs/dnsmasq.conf.add
+					sed -i '\~# Skynet~d' /jffs/scripts/firewall-start /jffs/scripts/services-stop /jffs/scripts/service-event /jffs/configs/profile.add /jffs/configs/dnsmasq.conf.add /jffs/scripts/unmount
 					sed -i '\~# Skynet Zero~d' /jffs/scripts/firewall-start 2>/dev/null; sed -i '\~# SkyNet-SF~d' /jffs/scripts/firewall-start 2>/dev/null
 					# Legacy cleanup for old bypass
 					sed -i '\~# swapon bypassed for Skynet Zero~d' /jffs/scripts/post-mount 2>/dev/null; sed -i '\~# swapon bypassed for SkyNet-SF~d' /jffs/scripts/post-mount 2>/dev/null
