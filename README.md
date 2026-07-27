@@ -6,6 +6,11 @@ Skynet Zero is an optimized version of the Asuswrt-Merlin firewall script design
 
 ## Development Changelog
 
+### v1.0.2-dev
+- **Branch Switching CLI Flags**: Introduced `--development` and `--master` CLI flags to seamlessly hot-swap between stable and development environments directly from the command line, automatically fetching and overriding the local script execution sequence.
+- **Native AMTM Support**: Removed legacy `# amtm NoMD5check` hashbang flag, completely finalizing native AMTM installation support and branch update compatibility.
+- **Regex Logic Hardening**: Fixed a critical bug in the dynamic branch auto-updater where the runtime environment falsely detected branches based on stale cache variables rather than evaluating the executing source code header.
+
 ### v8.1.x (Development Preview)
 - **Dynamic Branch Auto-Updater**: Refactored the core update engine to mathematically isolate codebase branches using a global `skynet_branch` payload. Skynet Zero now flawlessly respects your installed branch natively, permanently preventing cross-pollination and false MD5 upgrade notifications from AMTM.
 - **Extended Fork Versioning Support**: Enhanced the underlying `Filter_Version` regex string parser to seamlessly capture and display extended semantic version fork suffixes (e.g., `-sz.1.0.1-dev`) inside the Skynet UI.
