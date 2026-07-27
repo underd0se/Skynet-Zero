@@ -364,10 +364,12 @@ Check_Files() {
 			>> /jffs/scripts/service-event
 	fi
 
-	# 3) unmount: ensure swapoff entry
-	if ! grep -qE '^swapoff ' /jffs/scripts/unmount; then
-		sed -i '\~swapoff ~d' /jffs/scripts/unmount
-		echo 'swapoff -a 2>/dev/null # Skynet' >> /jffs/scripts/unmount
+	# 3) unmount: ensure swapoff entry only if swap is actually configured
+	if grep -q 'swapon .*/myswap\.swp # Skynet' /jffs/scripts/post-mount 2>/dev/null; then
+		if ! grep -qE '^swapoff ' /jffs/scripts/unmount 2>/dev/null; then
+			sed -i '\~swapoff ~d' /jffs/scripts/unmount 2>/dev/null
+			echo 'swapoff -a 2>/dev/null # Skynet' >> /jffs/scripts/unmount
+		fi
 	fi
 
 	# 4) services-stop: ensure firewall‑save alias
@@ -439,9 +441,7 @@ Check_Security() {
 	# Detect chkupdate.sh malware
 	if [ -f "/jffs/chkupdate.sh" ] || [ -f "/tmp/update" ] || [ -f "/tmp/.update.log" ] || [ -f "/jffs/runtime.log" ] || grep -qsF "upgrade.sh" "/jffs/scripts/openvpn-event"; then
 		Log error -s "Warning! Router Malware Detected (chkupdate.sh) - Investigate Immediately!"
-		grep -hoE '([0-9]{1,3}\.){3}[0-9]{1,3}' "/jffs/chkupdate.sh" "/tmp/update" "/tmp/.update.log" "/jffs/runtime.log" "/jffs/scripts/openvpn-event" 2>/dev/null | awk '!x[$0]++' | while IFS= read -r ip; do
-			echo "add Skynet-Blacklist $ip comment \"Malware: chkupdate.sh\""
-		done | ipset restore -!
+		grep -hoE '([0-9]{1,3}\.){3}[0-9]{1,3}' "/jffs/chkupdate.sh" "/tmp/update" "/tmp/.update.log" "/jffs/runtime.log" "/jffs/scripts/openvpn-event" 2>/dev/null | awk '!x[$0]++ {print "add Skynet-Blacklist "$0" comment \"Malware: chkupdate.sh\""}' | ipset restore -!
 	fi
 
 	# Detect updater malware
@@ -1160,14 +1160,10 @@ Save_IPSets() {
 
 Unban_PrivateIP() {
 	if Is_Enabled "$unbanprivateip" && Is_Enabled "$logmode"; then
-		grep -F "INBOUND" "$syslogloc" | Filter_PrivateSRC | grep -oE 'SRC=[0-9,\.]*' | cut -c 5- | awk '!x[$0]++' | while IFS= read -r "ip"; do
-			echo "add Skynet-Whitelist $ip comment \"Private IP\""
-			echo "del Skynet-Blacklist $ip"
-		done | ipset restore -!
-		grep -F "OUTBOUND" "$syslogloc" | Filter_PrivateDST | grep -oE 'DST=[0-9,\.]*' | cut -c 5- | awk '!x[$0]++' | while IFS= read -r "ip"; do
-			echo "add Skynet-Whitelist $ip comment \"Private IP\""
-			echo "del Skynet-Blacklist $ip"
-		done | ipset restore -!
+		{
+			grep -F "INBOUND" "$syslogloc" | Filter_PrivateSRC | grep -oE 'SRC=[0-9,\.]*' | cut -c 5-
+			grep -F "OUTBOUND" "$syslogloc" | Filter_PrivateDST | grep -oE 'DST=[0-9,\.]*' | cut -c 5-
+		} | awk '!x[$0]++ { print "add Skynet-Whitelist "$0" comment \"Private IP\"\ndel Skynet-Blacklist "$0 }' | ipset restore -!
 	fi
 }
 
