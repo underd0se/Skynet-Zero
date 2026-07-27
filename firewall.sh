@@ -2735,6 +2735,7 @@ Write_Config() {
 
 Load_Menu() {
 	. "$skynetcfg"
+	localver="$(Filter_Version < "$0")"
 	Display_Header "9"
 	printf '╔═════════════════════ System ══════════════════════════════════════════════════════════════════════════════╗\n'
 	printf '║ %-20s │ %-82s ║\n' "Router Model"   "$(nvram get productid)"
@@ -4400,6 +4401,7 @@ Find_Install_Dir "$@"
 # Load saved defaults from the config file if it exists
 if [ -f "$skynetcfg" ]; then
 	. "$skynetcfg"
+	localver="$(Filter_Version < "$0")"
 fi
 
 # Display the interactive menu when no command argument is provided
