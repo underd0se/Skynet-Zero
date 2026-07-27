@@ -215,7 +215,7 @@ Check_Settings() {
 		exit 1
 	else
 		# warn if too small (<1GB)
-		swap_kb=$(du -k "$swaplocation" 2>/dev/null | awk '{print $1}') || swap_kb=0
+		swap_kb=$(du -k "$swaplocation" 2>/dev/null | awk '{s+=$1} END {print s+0}') || swap_kb=0
 		if [ "$swap_kb" -gt 0 ] && [ "$swap_kb" -lt 1048576 ]; then
 			Log error -s "SWAP File Too Small (<1GB) - Please Fix Immediately!"
 		fi
@@ -597,29 +597,29 @@ Unload_LogIPTables() {
 Load_LogIPTables() {
 	if Is_Enabled "$logmode"; then
 		if [ "$(nvram get wgs_enable)" = "1" ]; then
-			pos1="$(iptables --line -vnL PREROUTING -t raw | grep -F "Skynet-Master dst" | grep -F "DROP" | grep -F "wgs" | awk '{print $1}')"
+			pos1="$(iptables --line -vnL PREROUTING -t raw | grep -F "Skynet-Master dst" | grep -F "DROP" | grep -F "wgs" | awk '{s+=$1} END {print s+0}')"
 			iptables -t raw -I PREROUTING "$pos1" -i wgs+ -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j LOG --log-prefix "[BLOCKED - OUTBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 		if [ "$(nvram get vpn_server1_state)" != "0" ] || [ "$(nvram get vpn_server2_state)" != "0" ]; then
-			pos2="$(iptables --line -vnL PREROUTING -t raw | grep -F "Skynet-Master dst" | grep -F "DROP" | grep -F "tun" | awk '{print $1}')"
+			pos2="$(iptables --line -vnL PREROUTING -t raw | grep -F "Skynet-Master dst" | grep -F "DROP" | grep -F "tun" | awk '{s+=$1} END {print s+0}')"
 			iptables -t raw -I PREROUTING "$pos2" -i tun2+ -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j LOG --log-prefix "[BLOCKED - OUTBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 		if [ "$filtertraffic" = "all" ] || [ "$filtertraffic" = "inbound" ]; then
-			pos3="$(iptables --line -nL PREROUTING -t raw | grep -F "Skynet-Master src" | grep -F "DROP" | awk '{print $1}')"
+			pos3="$(iptables --line -nL PREROUTING -t raw | grep -F "Skynet-Master src" | grep -F "DROP" | awk '{s+=$1} END {print s+0}')"
 			iptables -t raw -I PREROUTING "$pos3" -i "$iface" -m set ! --match-set Skynet-MasterWL src -m set --match-set Skynet-Master src -j LOG --log-prefix "[BLOCKED - INBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 		if [ "$filtertraffic" = "all" ] || [ "$filtertraffic" = "outbound" ]; then
-			pos4="$(iptables --line -vnL PREROUTING -t raw | grep -F "Skynet-Master dst" | grep -F "DROP" | grep -vF "tun" | grep -vF "wgs" | awk '{print $1}')"
+			pos4="$(iptables --line -vnL PREROUTING -t raw | grep -F "Skynet-Master dst" | grep -F "DROP" | grep -vF "tun" | grep -vF "wgs" | awk '{s+=$1} END {print s+0}')"
 			iptables -t raw -I PREROUTING "$pos4" -i br+ -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j LOG --log-prefix "[BLOCKED - OUTBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
-			pos5="$(iptables --line -nL OUTPUT -t raw | grep -F "Skynet-Master dst" | grep -F "DROP" | awk '{print $1}')"
+			pos5="$(iptables --line -nL OUTPUT -t raw | grep -F "Skynet-Master dst" | grep -F "DROP" | awk '{s+=$1} END {print s+0}')"
 			iptables -t raw -I OUTPUT "$pos5" -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j LOG --log-prefix "[BLOCKED - OUTBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 		if [ "$(nvram get fw_log_x)" = "drop" ] || [ "$(nvram get fw_log_x)" = "both" ] && Is_Enabled "$loginvalid"; then
-			pos6="$(iptables --line -nL logdrop | grep -F "DROP" | awk '{print $1}')"
+			pos6="$(iptables --line -nL logdrop | grep -F "DROP" | awk '{s+=$1} END {print s+0}')"
 			iptables -I logdrop "$pos6" -m state --state NEW -j LOG --log-prefix "[BLOCKED - INVALID] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 		if Is_Enabled "$iotblocked" && Is_Enabled "$iotlogging"; then
-			pos7="$(iptables --line -nL FORWARD | grep -F "Skynet-IOT" | grep -F "DROP" | awk '{print $1}')"
+			pos7="$(iptables --line -nL FORWARD | grep -F "Skynet-IOT" | grep -F "DROP" | awk '{s+=$1} END {print s+0}')"
 			iptables -I FORWARD "$pos7" -i br+ -m set --match-set Skynet-IOT src -j LOG --log-prefix "[BLOCKED - IOT] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 	fi
@@ -952,7 +952,7 @@ Generate_Ban_Stats() {
 		printf '%-15s %-4s | %-55s | %-45s | %-60s \n' "$statdata" "$country" "https://otx.alienvault.com/indicator/ip/${statdata}" "$banreason" "$(grep -F "$statdata" /tmp/skynet/skynetstats.txt | awk '{print $1}' | xargs)"
 		;;
 	2)
-		hits="$(echo "$statdata" | awk '{print $1}')"
+		hits="$(echo "$statdata" | awk '{s+=$1} END {print s+0}')"
 		ipaddr="$(echo "$statdata" | awk '{print $2}')"
 		if Is_Enabled "$lookupcountry"; then
 			country="$(curl -fsSL --retry 3 --max-time 6 "https://api.db-ip.com/v2/free/${ipaddr}/countryCode/" 2>/dev/null | grep -E '^[A-Z]{2}$' || echo '**')"
@@ -1321,11 +1321,11 @@ Whitelist_Shared() {
 	add Skynet-Whitelist $(nvram get wan_dns2_x) comment \"nvram: wan_dns2_x\"
 	add Skynet-Whitelist $(nvram get wan0_dns1_x) comment \"nvram: wan0_dns1_x\"
 	add Skynet-Whitelist $(nvram get wan0_dns2_x) comment \"nvram: wan0_dns2_x\"
-	add Skynet-Whitelist $(nvram get wan_dns | awk '{print $1}') comment \"nvram: wan_dns\"
+	add Skynet-Whitelist $(nvram get wan_dns | awk '{s+=$1} END {print s+0}') comment \"nvram: wan_dns\"
 	add Skynet-Whitelist $(nvram get wan_dns | awk '{print $2}') comment \"nvram: wan_dns\"
-	add Skynet-Whitelist $(nvram get wan0_dns | awk '{print $1}') comment \"nvram: wan0_dns\"
+	add Skynet-Whitelist $(nvram get wan0_dns | awk '{s+=$1} END {print s+0}') comment \"nvram: wan0_dns\"
 	add Skynet-Whitelist $(nvram get wan0_dns | awk '{print $2}') comment \"nvram: wan0_dns\"
-	add Skynet-Whitelist $(nvram get wan0_xdns | awk '{print $1}') comment \"nvram: wan0_xdns\"
+	add Skynet-Whitelist $(nvram get wan0_xdns | awk '{s+=$1} END {print s+0}') comment \"nvram: wan0_xdns\"
 	add Skynet-Whitelist $(nvram get wan0_xdns | awk '{print $2}') comment \"nvram: wan0_xdns\"
 	add Skynet-Whitelist 192.30.252.0/22 comment \"nvram: Github Content Server\"
 	add Skynet-Whitelist 127.0.0.0/8 comment \"nvram: Localhost\"" | tr -d "\t" | Filter_IPLine | ipset restore -! 2>/dev/null
@@ -1542,7 +1542,7 @@ Run_Stats() {
 	printf '╔═════════════════════ Logging ═════════════════════════════════════════════════════════════════════════════╗\n'
 	printf '║ %-20s │ %-82s ║\n' "Syslog Locations" "$syslogloc $syslog1loc"
 	printf '║ %-20s │ %-82s ║\n' "Skynet Log" "${skynetlog}"
-	SZ="$(du -h "${skynetlog}" | awk '{print $1}')"
+	SZ="$(du -h "${skynetlog}" | awk '{s+=$1} END {print s+0}')"
 	printf '║ └── %-16s │ %-82s ║\n' "Used/Total" "$SZ / ${logsize}MB"
 	Generate_Blocked_Events
 	printf '║ %-20s │ %-82s ║\n' "Manual Bans" "$(grep -Fc "Manual Ban" "$skynetevents")"
@@ -1836,7 +1836,7 @@ Run_Stats() {
 				if echo "$comment" | grep -q "BanMalware: "; then
 					local filename url
 					filename="$(echo "$comment" | cut -d ' ' -f2-)"
-					url="$(grep -E " $filename$" /tmp/skynet/skynet.manifest | head -1 | awk '{print $1}')"
+					url="$(grep -E " $filename$" /tmp/skynet/skynet.manifest | head -1 | awk '{s+=$1} END {print s+0}')"
 					printf '%-20s | %-40s\n' "$ip" "${url:-$filename}"
 				else
 					printf '%-20s | %-40s\n' "$ip" "$comment"
@@ -1853,7 +1853,7 @@ Run_Stats() {
 				comment="$(echo "$line" | grep -oE 'comment ".*"' | cut -d '"' -f2)"
 				if echo "$comment" | grep -q "BanMalware: "; then
 					filename="$(echo "$comment" | cut -d ' ' -f2-)"
-					url="$(grep -E " $filename$" /tmp/skynet/skynet.manifest | head -1 | awk '{print $1}')"
+					url="$(grep -E " $filename$" /tmp/skynet/skynet.manifest | head -1 | awk '{s+=$1} END {print s+0}')"
 					printf '%-20s | %-40s\n' "$range" "${url:-$filename}"
 				else
 					printf '%-20s | %-40s\n' "$range" "$comment"
@@ -2054,7 +2054,7 @@ Run_Stats() {
 		Red "Top $counter Blocked Devices (Outbound);"
 		Display_Header "4"
 		grep -E "OUTBOUND.*$proto" "$skynetlog" | grep -oE ' SRC=[0-9,\.]*' | cut -c 6- | sort -n | uniq -c | sort -nr | head -"$counter" | while IFS= read -r "statdata"; do
-			hits="$(echo "$statdata" | awk '{print $1}')"
+			hits="$(echo "$statdata" | awk '{s+=$1} END {print s+0}')"
 			ipaddr="$(echo "$statdata" | awk '{print $2}')"
 			macaddr="$(ip neigh | grep -F "$ipaddr " | awk '{print $5}')"
 			Get_LocalName
@@ -2077,17 +2077,17 @@ Generate_Stats() {
 			fi
 
 			if iptables -t raw -C PREROUTING -i "$iface" -m set ! --match-set Skynet-MasterWL src -m set --match-set Skynet-Master src -j DROP 2>/dev/null; then
-				hits1="$(iptables -xnvL PREROUTING -t raw | grep -Fv "LOG" | grep -F "Skynet-Master src" | awk '{print $1}')"
+				hits1="$(iptables -xnvL PREROUTING -t raw | grep -Fv "LOG" | grep -F "Skynet-Master src" | awk '{s+=$1} END {print s+0}')"
 			else
 				hits1="0"
 			fi
 			if iptables -t raw -C PREROUTING -i br+ -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j DROP 2>/dev/null; then
-				hits2="$(($(iptables -xnvL PREROUTING -t raw | grep -Fv "LOG" | grep -F "Skynet-Master dst" | grep -vF "tun" | grep -vF "wgs" | awk '{print $1}') + $(iptables -xnvL OUTPUT -t raw | grep -Fv "LOG" | grep -F "Skynet-Master dst" | awk '{print $1}')))"
+				hits2="$(($(iptables -xnvL PREROUTING -t raw | grep -Fv "LOG" | grep -F "Skynet-Master dst" | grep -vF "tun" | grep -vF "wgs" | awk '{s+=$1} END {print s+0}') + $(iptables -xnvL OUTPUT -t raw | grep -Fv "LOG" | grep -F "Skynet-Master dst" | awk '{s+=$1} END {print s+0}')))"
 				if iptables -t raw -C PREROUTING -i wgs+ -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j DROP 2>/dev/null; then
-					hits2="$((hits2 + $(iptables -xnvL PREROUTING -t raw | grep -Fv "LOG" | grep -F "Skynet-Master dst" | grep -F "wgs" | awk '{print $1}')))"
+					hits2="$((hits2 + $(iptables -xnvL PREROUTING -t raw | grep -Fv "LOG" | grep -F "Skynet-Master dst" | grep -F "wgs" | awk '{s+=$1} END {print s+0}')))"
 				fi
 				if iptables -t raw -C PREROUTING -i tun2+ -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j DROP 2>/dev/null; then
-					hits2="$((hits2 + $(iptables -xnvL PREROUTING -t raw | grep -Fv "LOG" | grep -F "Skynet-Master dst" | grep -F "tun" | awk '{print $1}')))"
+					hits2="$((hits2 + $(iptables -xnvL PREROUTING -t raw | grep -Fv "LOG" | grep -F "Skynet-Master dst" | grep -F "tun" | awk '{s+=$1} END {print s+0}')))"
 				fi
 			else
 				hits2="0"
@@ -2098,7 +2098,7 @@ Generate_Stats() {
 			WriteStats_ToJS "$hits1" "${skynetloc}/webui/stats.js" "SetHits1" "hits1"
 			WriteStats_ToJS "$hits2" "${skynetloc}/webui/stats.js" "SetHits2" "hits2"
 			WriteStats_ToJS "Monitoring From $(grep -m1 -F "BLOCKED -" "$skynetlog" | awk '{printf "%s %s %s\n", $1, $2, $3}') To $(grep -F "BLOCKED -" "$skynetlog" | tail -1 | awk '{printf "%s %s %s\n", $1, $2, $3}')" "${skynetloc}/webui/stats.js" "SetStatsDate" "statsdate"
-			WriteStats_ToJS "Log Size - ($(du -h "$skynetlog" | awk '{print $1}')B)" "${skynetloc}/webui/stats.js" "SetStatsSize" "statssize"
+			WriteStats_ToJS "Log Size - ($(du -h "$skynetlog" | awk '{s+=$1} END {print s+0}')B)" "${skynetloc}/webui/stats.js" "SetStatsSize" "statssize"
 			# Inbound Ports
 			grep -F "INBOUND" "$skynetlog" | grep -oE 'DPT=[0-9]{1,5}' | cut -c 5- | sort -n | uniq -c | sort -nr | head -10 | sed "s~^[ \t]*~~;s~ ~\~~g" >"${skynetloc}/webui/stats/iport.txt"
 			WriteData_ToJS "${skynetloc}/webui/stats/iport.txt" "${skynetloc}/webui/stats.js" "DataInPortHits" "LabelInPortHits"
@@ -2252,7 +2252,7 @@ Generate_Stats() {
 			# Top 10 HTTP Connections Blocked Outbound
 			true >"${skynetloc}/webui/stats/thconn.txt"
 			grep -E 'DPT=80 |DPT=443 ' "$skynetlog" | grep -F "OUTBOUND" | grep -oE ' DST=[0-9,\.]*' | cut -c 6- | sort -n | uniq -c | sort -nr | head -10 | while IFS= read -r "statdata"; do
-				hits="$(echo "$statdata" | awk '{print $1}')"
+				hits="$(echo "$statdata" | awk '{s+=$1} END {print s+0}')"
 				ipaddr="$(echo "$statdata" | awk '{print $2}')"
 				if Is_Enabled "$lookupcountry"; then
 					country="$(curl -fsSL --retry 3 --max-time 6 "https://api.db-ip.com/v2/free/${ipaddr}/countryCode/" 2>/dev/null | grep -E '^[A-Z]{2}$' || echo '**')"
@@ -2263,7 +2263,7 @@ Generate_Stats() {
 			# Top 10 Inbound Connections Blocked
 			true >"${skynetloc}/webui/stats/ticonn.txt"
 			grep -F "INBOUND" "$skynetlog" | grep -oE ' SRC=[0-9,\.]*' | cut -c 6- | sort -n | uniq -c | sort -nr | head -10 | while IFS= read -r "statdata"; do
-				hits="$(echo "$statdata" | awk '{print $1}')"
+				hits="$(echo "$statdata" | awk '{s+=$1} END {print s+0}')"
 				ipaddr="$(echo "$statdata" | awk '{print $2}')"
 				if Is_Enabled "$lookupcountry"; then country="$(curl -fsSL --retry 3 --max-time 6 "https://api.db-ip.com/v2/free/${ipaddr}/countryName/")"; else country="*"; fi
 				if [ -z "$country" ]; then country="*"; fi
@@ -2273,7 +2273,7 @@ Generate_Stats() {
 			# Top 10 Outbound Connections Blocked
 			true >"${skynetloc}/webui/stats/toconn.txt"
 			grep -F "OUTBOUND" "$skynetlog" | grep -vE 'DPT=80 |DPT=443 ' | grep -oE ' DST=[0-9,\.]*' | cut -c 6- | sort -n | uniq -c | sort -nr | head -10 | while IFS= read -r "statdata"; do
-				hits="$(echo "$statdata" | awk '{print $1}')"
+				hits="$(echo "$statdata" | awk '{s+=$1} END {print s+0}')"
 				ipaddr="$(echo "$statdata" | awk '{print $2}')"
 				if Is_Enabled "$lookupcountry"; then
 					country="$(curl -fsSL --retry 3 --max-time 6 "https://api.db-ip.com/v2/free/${ipaddr}/countryCode/" 2>/dev/null | grep -E '^[A-Z]{2}$' || echo '**')"
@@ -2410,6 +2410,7 @@ Download_File() {
 		else
 			Log error "Failed to update $filename"
 		fi
+
 	else
 		echo "[i] No change to $filename (MD5 matched)"
 	fi
@@ -2694,6 +2695,7 @@ Purge_Logs() {
 	# Ensure skynetlog isn’t too large (or force), run stats, and truncate if still big
 	log_kb=$(du -k "$skynetlog" 2>/dev/null | cut -f1) || log_kb=0
 	log_kb=${log_kb:-0}
+	[ -z "$logsize" ] && logsize="10"
 	log_kb_limit="$((logsize * 1024))"
 	if [ "$log_kb" -ge "$log_kb_limit" ] || [ "$1" = "force" ]; then
 		Generate_Stats
@@ -2747,17 +2749,17 @@ Print_Log() {
 	unset fail
 	if Check_IPTables; then
 		if [ "$filtertraffic" != "outbound" ]; then
-			hits1="$(iptables -xnvL PREROUTING -t raw | grep -Fv "LOG" | grep -F "Skynet-Master src" | awk '{print $1}')"
+			hits1="$(iptables -xnvL PREROUTING -t raw | grep -Fv "LOG" | grep -F "Skynet-Master src" | awk '{s+=$1} END {print s+0}')"
 		else
 			hits1="0"
 		fi
 		if [ "$filtertraffic" != "inbound" ]; then
-			hits2="$(($(iptables -xnvL PREROUTING -t raw | grep -Fv "LOG" | grep -F "Skynet-Master dst" | grep -vF "tun" | grep -vF "wgs" | awk '{print $1}') + $(iptables -xnvL OUTPUT -t raw | grep -Fv "LOG" | grep -F "Skynet-Master dst" | awk '{print $1}')))"
+			hits2="$(($(iptables -xnvL PREROUTING -t raw | grep -Fv "LOG" | grep -F "Skynet-Master dst" | grep -vF "tun" | grep -vF "wgs" | awk '{s+=$1} END {print s+0}') + $(iptables -xnvL OUTPUT -t raw | grep -Fv "LOG" | grep -F "Skynet-Master dst" | awk '{s+=$1} END {print s+0}')))"
 			if iptables -t raw -C PREROUTING -i wgs+ -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j DROP 2>/dev/null; then
-				hits2="$((hits2 + $(iptables -xnvL PREROUTING -t raw | grep -Fv "LOG" | grep -F "Skynet-Master dst" | grep -F "wgs" | awk '{print $1}')))"
+				hits2="$((hits2 + $(iptables -xnvL PREROUTING -t raw | grep -Fv "LOG" | grep -F "Skynet-Master dst" | grep -F "wgs" | awk '{s+=$1} END {print s+0}')))"
 			fi
 			if iptables -t raw -C PREROUTING -i tun2+ -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j DROP 2>/dev/null; then
-				hits2="$((hits2 + $(iptables -xnvL PREROUTING -t raw | grep -Fv "LOG" | grep -F "Skynet-Master dst" | grep -F "tun" | awk '{print $1}')))"
+				hits2="$((hits2 + $(iptables -xnvL PREROUTING -t raw | grep -Fv "LOG" | grep -F "Skynet-Master dst" | grep -F "tun" | awk '{s+=$1} END {print s+0}')))"
 			fi
 		else
 			hits2="0"
@@ -2779,6 +2781,7 @@ Print_Log() {
 }
 
 Write_Config() {
+	[ -z "$logsize" ] && logsize="10"
 	{
 		printf '%s\n' "################################################"
 		printf '%s\n' "## Generated By Skynet - Do Not Manually Edit ##"
@@ -5962,8 +5965,8 @@ update | amtmupdate)
 	fi
 	remotedir="https://raw.githubusercontent.com/underd0se/Skynet-Zero/${skynet_branch}"
 	remotever="$(curl -fsL --retry 3 --max-time 6 "$remotedir/firewall.sh" | Filter_Version)"
-	localmd5="$(md5sum "$0" | awk '{print $1}')"
-	remotemd5="$(curl -fsL --retry 3 --max-time 6 "${remotedir}/firewall.sh" | md5sum | awk '{print $1}')"
+	localmd5="$(md5sum "$0" | awk '{s+=$1} END {print s+0}')"
+	remotemd5="$(curl -fsL --retry 3 --max-time 6 "${remotedir}/firewall.sh" | md5sum | awk '{s+=$1} END {print s+0}')"
 	if [ "$localmd5" = "$remotemd5" ] && [ "$2" != "-f" ]; then
 		Log info "Skynet Up To Date - $localver (${localmd5})"
 		nolog="2"
@@ -6507,7 +6510,7 @@ settings)
 		view)
 			Display_Header "6"
 			ip neigh | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3} ' | sort -n -t . -k 1,1 -k 2,2 -k 3,3 -k 4,4 | while IFS= read -r "ip"; do
-				ipaddr="$(echo "$ip" | awk '{print $1}')"
+				ipaddr="$(echo "$ip" | awk '{s+=$1} END {print s+0}')"
 				macaddr="$(echo "$ip" | awk '{print $5}')"
 				Get_LocalName
 				state="$(echo "$ip" | awk '{print $6}')"
@@ -7075,7 +7078,7 @@ debug)
 		printf '║ └── %-16s │ %-82s ║\n' "Used/Total" "$UA"
 		if [ -n "$swaplocation" ]; then
 			printf '║ %-20s │ %-82s ║\n' "SWAP File" "$swaplocation"
-			SZ="$(du -h "$swaplocation" | awk '{print $1}')"
+			SZ="$(du -h "$swaplocation" | awk '{s+=$1} END {print s+0}')"
 			printf '║ └── %-16s │ %-82s ║\n' "Size" "$SZ"
 		fi
 		printf '╚══════════════════════╧════════════════════════════════════════════════════════════════════════════════════╝\n\n\n'
@@ -7092,7 +7095,7 @@ debug)
 		printf '╔═════════════════════ Logging ═════════════════════════════════════════════════════════════════════════════╗\n'
 		printf '║ %-20s │ %-82s ║\n' "Syslog Locations" "$syslogloc $syslog1loc"
 		printf '║ %-20s │ %-82s ║\n' "Skynet Log" "${skynetlog}"
-		SZ="$(du -h "${skynetlog}" | awk '{print $1}')"
+		SZ="$(du -h "${skynetlog}" | awk '{s+=$1} END {print s+0}')"
 		printf '║ └── %-16s │ %-82s ║\n' "Used/Total" "$SZ / ${logsize}MB"
 		if [ -n "$countrylist" ]; then
 			countries="$countrylist"
@@ -7112,7 +7115,7 @@ debug)
 			grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3} ' |
 			sort -n -t . -k 1,1 -k 2,2 -k 3,3 -k 4,4 |
 			while IFS= read -r ip; do
-				ipaddr="$(echo "$ip" | awk '{print $1}')"
+				ipaddr="$(echo "$ip" | awk '{s+=$1} END {print s+0}')"
 				macaddr="$(echo "$ip" | awk '{print $5}')"
 				Get_LocalName
 				state="$(echo "$ip" | awk '{print $6}')"
@@ -7350,7 +7353,7 @@ debug)
 				if [ -n "$findswap" ]; then
 					swaplocation="$findswap"
 				elif [ -z "$findswap" ]; then
-					findswap="$(grep -m1 -F "file" "/proc/swaps" | awk '{print $1}')"
+					findswap="$(grep -m1 -F "file" "/proc/swaps" | awk '{s+=$1} END {print s+0}')"
 					if [ -n "$findswap" ]; then
 						swaplocation="$findswap"
 					else
