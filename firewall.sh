@@ -185,6 +185,14 @@ Check_Settings() {
 	# Grab and set local version
 	localver="$(Filter_Version <"$0")"
 
+	# Legacy kernel override cleanup (Zero-Storage transition)
+	if grep -q "SkyNet-SF" /jffs/scripts/firewall-start 2>/dev/null; then
+		sed -i '\~# SkyNet-SF~d' /jffs/scripts/firewall-start 2>/dev/null
+		nvram unset skynet_old_swappiness
+		nvram unset skynet_old_overcommit
+		nvram commit
+	fi
+
 	# require config file
 	if [ ! -f "$skynetcfg" ]; then
 		Log error -s "Configuration File Not Detected - Please Use ( sh $0 install ) To Continue"
@@ -197,14 +205,6 @@ Check_Settings() {
 
 	if [ -z "$swaplocation" ] && ! Check_Swap; then
 		Log warn -s "SWAP File not detected. Continuing in Low-RAM optimization mode."
-		if [ -f /proc/sys/vm/overcommit_memory ] && [ "$(cat /proc/sys/vm/overcommit_memory)" = "2" ]; then
-			echo 0 >/proc/sys/vm/overcommit_memory
-			Log info -s "Relaxed kernel overcommit limit to safely bypass SWAP requirement."
-		fi
-		if [ -f /proc/sys/vm/swappiness ] && [ "$(cat /proc/sys/vm/swappiness)" != "0" ]; then
-			echo 0 >/proc/sys/vm/swappiness
-			Log info -s "Kernel swappiness dynamically set to 0 (Optimized for Swap-Free mode)"
-		fi
 	elif Check_Swap && [ -z "$(grep -E 'swapon [^#]+' /jffs/scripts/post-mount | cut -d ' ' -f2)" ]; then
 		Log error -s "SWAPON Entry Missing - Fix This By Running ( $0 debug swap uninstall ) Then ( $0 debug swap install )"
 		echo
@@ -2553,11 +2553,13 @@ Create_Swap() {
 		3)
 			echo "[i] Proceeding without SWAP file (Skynet Zero mode)"
 			echo
-			if [ -f /proc/sys/vm/swappiness ] && [ "$(cat /proc/sys/vm/swappiness)" != "0" ]; then
-				echo 0 >/proc/sys/vm/swappiness
-				echo "[i] Kernel swappiness dynamically set to 0 (Optimized for Swap-Free mode)"
-				echo
+
+			swaplocation="${device}/myswap.swp"
+			if [ -f "$swaplocation" ]; then
+				swapoff -a 2>/dev/null
+				rm -f "$swaplocation"
 			fi
+			sed -i '\~swapon ~d' /jffs/scripts/post-mount
 			return 0
 			;;
 		e | exit)
@@ -3514,12 +3516,10 @@ Load_Menu() {
 				printf '%-35s | %-40s\n' "[15] --> Stats Country Lookup" "$(if Is_Enabled "$lookupcountry"; then Grn "[Enabled]"; else Ylow "[Disabled]"; fi)"
 				printf '%-35s | %-40s\n' "[16] --> CDN Whitelisting" "$(if Is_Enabled "$cdnwhitelist"; then Grn "[Enabled]"; else Red "[Disabled]"; fi)"
 				printf '%-35s | %-40s\n' "[17] --> Display WebUI" "$(if Is_Enabled "$displaywebui"; then Grn "[Enabled]"; else Ylow "[Disabled]"; fi)"
-				if grep -q "vm/swappiness # Skynet Zero" /jffs/scripts/firewall-start 2>/dev/null || grep -q "vm/swappiness # SkyNet-SF" /jffs/scripts/firewall-start 2>/dev/null; then
-					swapmode_status="$(Grn "[Zero Swap]")"
-				elif grep -qE "swapon .* # Skynet" /jffs/scripts/post-mount 2>/dev/null; then
+				if grep -qE "swapon .* # Skynet" /jffs/scripts/post-mount 2>/dev/null; then
 					swapmode_status="$(Ylow "[Swap]")"
 				else
-					swapmode_status="$(Red "[None]")"
+					swapmode_status="$(Grn "[Zero Swap]")"
 				fi
 				printf '%-35s | %-40s\n' "[18] --> Switch Swap Mode" "$swapmode_status"
 				echo
@@ -7498,9 +7498,7 @@ install)
 		echo "[*] Private IP Detected - Please Put Your Modem In Bridge Mode / Disable CG-NAT"
 		echo
 	fi
-	if [ -f /proc/sys/vm/overcommit_memory ] && [ "$(cat /proc/sys/vm/overcommit_memory)" = "2" ]; then
-		echo 0 >/proc/sys/vm/overcommit_memory
-	fi
+
 	echo "[i] Installing Skynet $(Filter_Version <"$0")"
 	echo
 	Manage_Device
