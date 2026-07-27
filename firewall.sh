@@ -452,7 +452,9 @@ Check_Security() {
 	# Detect chkupdate.sh malware
 	if [ -f "/jffs/chkupdate.sh" ] || [ -f "/tmp/update" ] || [ -f "/tmp/.update.log" ] || [ -f "/jffs/runtime.log" ] || grep -qsF "upgrade.sh" "/jffs/scripts/openvpn-event"; then
 		Log error -s "Warning! Router Malware Detected (chkupdate.sh) - Investigate Immediately!"
-		grep -hoE '([0-9]{1,3}\.){3}[0-9]{1,3}' "/jffs/chkupdate.sh" "/tmp/update" "/tmp/.update.log" "/jffs/runtime.log" "/jffs/scripts/openvpn-event" 2>/dev/null | awk '!x[$0]++ {print "add Skynet-Blacklist "$0" comment \"Malware: chkupdate.sh\""}' | ipset restore -!
+		grep -hoE '([0-9]{1,3}\.){3}[0-9]{1,3}' "/jffs/chkupdate.sh" "/tmp/update" "/tmp/.update.log" "/jffs/runtime.log" "/jffs/scripts/openvpn-event" 2>/dev/null | sort -u | while IFS= read -r "ip"; do
+			ipset -! add Skynet-Blacklist "$ip" comment "Malware: chkupdate.sh"
+		done
 	fi
 
 	# Detect updater malware
@@ -1197,10 +1199,14 @@ Save_IPSets() {
 
 Unban_PrivateIP() {
 	if Is_Enabled "$unbanprivateip" && Is_Enabled "$logmode"; then
-		{
-			grep -F "INBOUND" "$syslogloc" | Filter_PrivateSRC | grep -oE 'SRC=[0-9,\.]*' | cut -c 5-
-			grep -F "OUTBOUND" "$syslogloc" | Filter_PrivateDST | grep -oE 'DST=[0-9,\.]*' | cut -c 5-
-		} | awk '!x[$0]++ { print "add Skynet-Whitelist "$0" comment \"Private IP\"\ndel Skynet-Blacklist "$0 }' | ipset restore -!
+		grep -F "INBOUND" "$syslogloc" | Filter_PrivateSRC | grep -oE 'SRC=[0-9,\.]*' | cut -c 5- | sort -u | while IFS= read -r "ip"; do
+			ipset -! add Skynet-Whitelist "$ip" comment "Private IP"
+			ipset -! del Skynet-Blacklist "$ip"
+		done
+		grep -F "OUTBOUND" "$syslogloc" | Filter_PrivateDST | grep -oE 'DST=[0-9,\.]*' | cut -c 5- | sort -u | while IFS= read -r "ip"; do
+			ipset -! add Skynet-Whitelist "$ip" comment "Private IP"
+			ipset -! del Skynet-Blacklist "$ip"
+		done
 	fi
 }
 
