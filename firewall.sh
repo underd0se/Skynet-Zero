@@ -2700,6 +2700,33 @@ Write_Config() {
 #- Menu -#
 ##########
 
+Check_JFFS_Migration() {
+	if [ "$skynetloc" != "/jffs/skynet" ]; then return; fi
+	if [ "$1" = "uninstall" ]; then return; fi
+
+	# Search for a USB
+	set --
+	while read -r _ mnt fs _; do
+		case "$fs" in
+			ext2|ext3|ext4|tfat|exfat)
+				set -- "$@" "$mnt"
+				;;
+		esac
+	done < /proc/mounts
+
+	if [ $# -gt 0 ]; then
+		local usb_target="$1"
+		Log info -s "USB Drive Detected. Auto-Migrating Skynet from JFFS to $usb_target..."
+		mkdir -p "${usb_target}/skynet"
+		cp -rf /jffs/skynet/* "${usb_target}/skynet/" 2>/dev/null
+		sed -i "s|skynetloc=.* # Skynet|skynetloc=${usb_target}/skynet # Skynet|g" /jffs/scripts/firewall-start
+		rm -rf /jffs/skynet
+		Log info -s "Migration Complete. Restarting Firewall."
+		service restart_firewall >/dev/null 2>&1
+		exit 0
+	fi
+}
+
 Load_Menu() {
 	. "$skynetcfg"
 	localver="$(Filter_Version < "$0")"
@@ -2723,6 +2750,14 @@ Load_Menu() {
 	fi
 	[ -n "$customlisturl" ] && printf '║ %-20s │ %-82s ║\n' "Custom Filter URL" "$customlisturl"
 	printf '╚══════════════════════╧════════════════════════════════════════════════════════════════════════════════════╝\n\n\n'
+	if [ "$skynetloc" = "/jffs/skynet" ]; then
+		Red "WARNING: Skynet is installed to your internal JFFS flash. This causes extreme hardware"
+		Red "write-fatigue and makes your files vulnerable to Asus Security Daemon (ASD) deletions."
+		Red "It is strongly advised to insert a USB drive immediately."
+		Red "Skynet Zero will automatically migrate your setup to the USB drive on the next reboot or update."
+		Red "Continuing to use JFFS is at your own risk."
+		echo; echo
+	fi
 	if [ -f "$LOCK_FILE" ] && ! flock -n 9 9<"$LOCK_FILE"; then
 		locked_cmd=$(cut -d'|' -f1 "$LOCK_FILE")
 		locked_pid=$(cut -d'|' -f2 "$LOCK_FILE")
@@ -4364,6 +4399,8 @@ Load_Menu() {
 }
 
 Find_Install_Dir "$@"
+
+Check_JFFS_Migration "$@"
 
 # Load saved defaults from the config file if it exists
 if [ -f "$skynetcfg" ]; then
