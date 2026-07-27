@@ -7,6 +7,7 @@ Skynet Zero is an optimized version of the Asuswrt-Merlin firewall script design
 ## Development Changelog
 
 ### v1.1.1-dev
+- **2026-07-28**: Fixed fatal `arithmetic syntax error` crashes when loading the UI menu or running stats with an empty `logsize` config or missing `iptables` entries.
 - **2026-07-28**: Removed obsolete dynamic kernel overrides (swappiness/overcommit) to preserve native Asuswrt memory management and safely support third-party script swap files. Added proactive legacy boot injection cleanup.
 
 ### v1.1.0-dev
