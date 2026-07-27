@@ -8,6 +8,7 @@ Skynet Zero is an optimized version of the Asuswrt-Merlin firewall script design
 
 ### v1.0.3-dev
 - **Strict Hardware Enforcement**: The JFFS installation fallback option has been permanently removed. Skynet Zero now actively prevents users from installing its data directory to the router's internal flash memory, explicitly enforcing a USB-only requirement. This protects users from severe internal flash write-fatigue and prevents the Asus Security Daemon (ASD) from falsely flagging and deleting active IP blocklists.
+- **Seamless JFFS Auto-Migration**: Legacy users currently stuck on a JFFS installation will now automatically be migrated to an external USB drive the moment they insert one, preserving all historical data and configurations without downtime. If no USB is present, the script injects a persistent, degraded-mode UI warning banner underneath the main menu advising immediate hardware compliance.
 
 ### v1.0.2-dev
 - **Branch Switching CLI Flags**: Introduced `--development` and `--master` CLI flags to seamlessly hot-swap between stable and development environments directly from the command line, automatically fetching and overriding the local script execution sequence.
