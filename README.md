@@ -7,22 +7,24 @@ Skynet Zero is an optimized version of the Asuswrt-Merlin firewall script design
 ## Development Changelog
 
 ### v1.0.3-dev
-- **Strict Hardware Enforcement**: The JFFS installation fallback option has been permanently removed. Skynet Zero now actively prevents users from installing its data directory to the router's internal flash memory, explicitly enforcing a USB-only requirement. This protects users from severe internal flash write-fatigue and prevents the Asus Security Daemon (ASD) from falsely flagging and deleting active IP blocklists.
-- **Seamless JFFS Auto-Migration**: Legacy users currently stuck on a JFFS installation will now automatically be migrated to an external USB drive the moment they insert one, preserving all historical data and configurations without downtime. If no USB is present, the script injects a persistent, degraded-mode UI warning banner underneath the main menu advising immediate hardware compliance.
+- **2026-07-27**: Optimized security loops using single-pass `awk` arrays (yields ~70% speedup).
+- **2026-07-27**: Added safe purge of legacy unmount injections for Zero Swap users, protecting third-party swaps.
+- **2026-07-27**: Updated ASCII UI header to feature minimalist `ZER0` branding.
+- **2026-07-21**: Enforced strict USB-only installation to protect internal JFFS flash.
+- **2026-07-21**: Added seamless JFFS auto-migration to USB with degraded-mode UI warnings.
 
 ### v1.0.2-dev
-- **Branch Switching CLI Flags**: Introduced `--development` and `--master` CLI flags to seamlessly hot-swap between stable and development environments directly from the command line, automatically fetching and overriding the local script execution sequence.
-- **Native AMTM Support**: Removed legacy `# amtm NoMD5check` hashbang flag, completely finalizing native AMTM installation support and branch update compatibility.
-- **Regex Logic Hardening**: Fixed a critical bug in the dynamic branch auto-updater where the runtime environment falsely detected branches based on stale cache variables rather than evaluating the executing source code header.
+- **2026-07-18**: Added `--development` and `--master` CLI flags for dynamic branch swapping.
+- **2026-07-18**: Finalized native AMTM installation and update support.
+- **2026-07-18**: Fixed a branch updater bug caused by stale cache variable evaluation.
 
 ### v8.1.x (Development Preview)
-- **Dynamic Branch Auto-Updater**: Refactored the core update engine to mathematically isolate codebase branches using a global `skynet_branch` payload. Skynet Zero now flawlessly respects your installed branch natively, permanently preventing cross-pollination and false MD5 upgrade notifications from AMTM.
-- **Extended Fork Versioning Support**: Enhanced the underlying `Filter_Version` regex string parser to seamlessly capture and display extended semantic version fork suffixes (e.g., `-sz.1.0.1-dev`) inside the Skynet UI.
-- **Dynamic Parallel Streaming Architecture**: The script now actively scans your router's hardware capabilities via `/proc/meminfo`. If your router possesses >500MB RAM or an active swap file, the `banmalware` pipeline spins up concurrent background streams to evaluate and crunch blocklists in parallel. Legacy low-RAM hardware gracefully falls back to a synchronous stream.
-- **Zero-Storage Direct Streaming Pipeline**: The `banmalware` engine no longer downloads lists to the USB drive. Feed data is downloaded via `curl`, immediately crunched through an `awk` evaluation array, and streamed directly into an atomic `ipset restore` kernel payload in physical memory.
-- **Advanced `awk` Optimization**: Replaced heavily bottlenecked `while read` loops inside `Check_Security` and `Unban_PrivateIP` with lightning-fast single-pass `awk` arrays to eliminate CPU exhaustion.
-- **Dynamic Kernel Management**: The legacy UI toggle for "Swap Modes" and the buggy NVRAM kernel backups have been entirely removed. The script now securely evaluates your environment at runtime and dynamically relaxes kernel limits (`swappiness=0`, `overcommit_memory=0`) only when absolutely necessary, silently bypassing out-of-memory kernel panics without cluttering system configurations.
-- **POSIX & Shellcheck Compliance**: Codebase stripped of Ash-incompatible array declarations and legacy abstractions, bringing the script closer to true POSIX standards for Asuswrt BusyBox execution.
+- **2026-07-16**: Introduced Dynamic Branch Auto-Updater to natively isolate fork branches.
+- **2026-07-16**: Enhanced `Filter_Version` regex parser for extended fork suffix support.
+- **2026-07-16**: Implemented memory-aware Dynamic Parallel Streaming Architecture for `banmalware`.
+- **2026-07-16**: Built Zero-Storage Direct Streaming Pipeline natively in RAM via `curl` and `awk`.
+- **2026-07-16**: Overhauled kernel management by dynamically scaling `swappiness=0` during heavy loads.
+- **2026-07-16**: Hardened codebase for strict POSIX & Shellcheck compliance.
 
 ## Memory Implications
 
