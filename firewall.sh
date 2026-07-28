@@ -11,7 +11,7 @@
 #                                                                                                           #
 #                                 Router Firewall And Security Enhancements                                 #
 #                      By Adamm (Forked by underd0se) -  https://github.com/underd0se/Skynet-Zero           #
-#                               28/07/2026 - v8.1.1-sz.1.1.1 (Zero Swap)                                    #
+#                               29/07/2026 - v8.1.1-sz.1.1.2 (Zero Swap)                                    #
 #############################################################################################################
 
 export PATH="/sbin:/bin:/usr/sbin:/usr/bin:$PATH"
