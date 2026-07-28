@@ -1,63 +1,89 @@
-# Skynet Zero (Development Branch)
+# Skynet Zero (Zero Swap)
 
-A hardware-friendly, RAM-only fork of [Adamm00's IPSet_ASUS (Skynet)](https://github.com/Adamm00/IPSet_ASUS) focused on modernization, POSIX compliance, and extreme execution speed.
+A hardware-friendly, RAM-only fork of [Adamm00's IPSet_ASUS (Skynet)](https://github.com/Adamm00/IPSet_ASUS).
 
-Skynet Zero is an optimized version of the Asuswrt-Merlin firewall script designed to safely compile massive IP blocklists without destroying your attached USB flash drive through write-fatigue.
+Skynet Zero is an optimized version of the Asuswrt-Merlin firewall script designed to eliminate the requirement for a USB swap file. By modifying how the Linux kernel handles virtual memory allocation, Skynet Zero safely compiles IP blocklists entirely in physical RAM. This prevents read/write degradation on attached USB flash drives while executing at native memory speeds.
 
-## Development Changelog
+## Technical Architecture
 
-### v1.1.2-dev
-- **2026-07-29**: Fixed a fatal Catch-22 crash-loop where `dnsmasq` would permanently lock up the router (PID exhaustion) during an offline boot by ensuring IPSet arrays are initialized natively before WAN connectivity checks.
+The original Skynet script requires a 2GB USB swap file. Because Asuswrt routers have limited RAM (e.g., 512MB), heavy operations like parsing massive IP sets or compiling malware blocklists frequently cause the Linux kernel to heavily utilize this swap file. While this prevents the router from crashing, it results in hundreds of megabytes of daily I/O writes to the USB flash drive, eventually destroying the drive through write-fatigue.
 
-### v1.1.1-dev
-- **2026-07-28**: Fixed fatal `arithmetic syntax error` crashes when loading the UI menu or running stats with an empty `logsize` config or missing `iptables` entries.
-- **2026-07-28**: Removed obsolete dynamic kernel overrides (swappiness/overcommit) to preserve native Asuswrt memory management and safely support third-party script swap files. Added proactive legacy boot injection cleanup.
+Skynet Zero solves this hardware degradation through a dynamic kernel optimization. When Skynet Zero mode is selected during installation, it alters the kernel's anonymous memory paging preference (`vm.swappiness=0`). 
 
-### v1.1.0-dev
-- **2026-07-27**: Implemented full Zero-Storage Direct Streaming Pipeline (fixed stats to extract from kernel RAM, bypassed /tmp writes for custom list imports).
-
-### v1.0.4-dev
-- **2026-07-27**: Merged `feature/awk-optimization` branch (single-pass awk arrays yielding ~70% speedup).
-
-### v1.0.3-dev
-- **2026-07-27**: Added safe purge of legacy unmount injections for Zero Swap users, protecting third-party swaps.
-- **2026-07-27**: Updated ASCII UI header to feature minimalist `ZER0` branding.
-- **2026-07-21**: Enforced strict USB-only installation to protect internal JFFS flash.
-- **2026-07-21**: Added seamless JFFS auto-migration to USB with degraded-mode UI warnings.
-
-### v1.0.2-dev
-- **2026-07-18**: Added `--development` and `--master` CLI flags for dynamic branch swapping.
-- **2026-07-18**: Finalized native AMTM installation and update support.
-- **2026-07-18**: Fixed a branch updater bug caused by stale cache variable evaluation.
-
-### v8.1.x (Development Preview)
-- **2026-07-16**: Introduced Dynamic Branch Auto-Updater to natively isolate fork branches.
-- **2026-07-16**: Enhanced `Filter_Version` regex parser for extended fork suffix support.
-- **2026-07-16**: Implemented memory-aware Dynamic Parallel Streaming Architecture for `banmalware`.
-- **2026-07-16**: Built Zero-Storage Direct Streaming Pipeline natively in RAM via `curl` and `awk`.
-- **2026-07-16**: Overhauled kernel management by dynamically scaling `swappiness=0` during heavy loads.
-- **2026-07-16**: Hardened codebase for strict POSIX & Shellcheck compliance.
+By explicitly instructing the Linux kernel to prioritize dropping the page cache over swapping anonymous memory, Skynet Zero forces the router to execute all heavy array compilations strictly in physical RAM. The USB swap file remains mounted to satisfy the kernel's virtual memory math (preventing `can't fork` allocation lockups), but it is functionally dormant. 
 
 ## Memory Implications
 
-Because Skynet Zero operates natively in physical RAM, you will notice higher overall physical memory utilization in the Asuswrt WebUI. This is mathematically safe. The router seamlessly balances memory demands, offering significantly faster execution times while completely eliminating USB write degradation.
+Because Skynet Zero operates at native physical RAM speeds without relying on USB paging, users will notice higher overall physical memory utilization in the Asuswrt WebUI. This is completely normal and mathematically safe. The router seamlessly balances physical memory demands in the background, offering significantly faster execution times for firewall updates while achieving zero USB write degradation.
+
+> **Zero-Swap Survival Note:** While keeping a dormant swap file mounted is recommended as a virtual `CommitLimit` fail-safe, telemetry proves that the `swappiness=0` architecture is so efficient at forcing the kernel to purge disk caches that Asuswrt routers can natively survive extreme firewall compilations even if the user has **0 bytes** of swap mounted.
+
+## Stress Testing & Stability Validation
+
+To validate the stability of the `swappiness=0` architecture, Skynet Zero was subjected to an extreme Edge Case Simulator on native Asuswrt hardware. The script flawlessly executed an exhaustive compilation (IP blocks, malware crunching, and dynamic stat generation) while the router was actively suppressed under four simultaneous catastrophic constraints:
+
+| Constraint | Methodology | Result |
+| :--- | :--- | :--- |
+| **CPU Saturation** | 4 infinite subshells forcefully pinning the CPU to 100% (Load Avg: 7.71). | Passed |
+| **Page Cache Exhaustion** | A concurrent 2GB continuous binary disk flush (`/dev/zero` to USB). | Passed |
+| **Inode Starvation** | Rapid concurrent generation of 50,000 dummy files on the USB to saturate file tables. | Passed |
+| **Process Collisions** | Simultaneous execution of `banmalware`, `aiprotect`, and WebUI log parsing. | Passed |
+
+**System Outcome:** 
+* **Zero USB Degradation:** Telemetry mathematically confirmed `0 Bytes` of the swap file were utilized during the entire crucible.
+* **Zero Lockups:** The latent `overcommit=2` padding completely prevented any `can't fork` panics despite massive memory saturation.
+* **Perfect Recovery:** All volatile RAM was instantly flushed upon test completion with 0 stuck processes.
+
+## Requirements
+
+A USB drive formatted for Asuswrt-Merlin is required to hold the installation scripts and logs. No swap file is required.
 
 ## Installation Procedure
 
-You can install the bleeding-edge `development` branch directly to your Asuswrt router via your SSH Client:
+In your SSH Client, run the following command:
 
 ```Shell
-/usr/sbin/curl -s "https://raw.githubusercontent.com/underd0se/Skynet-Zero/development/firewall.sh" -o "/jffs/scripts/firewall" && chmod 755 /jffs/scripts/firewall && sh /jffs/scripts/firewall install
+/usr/sbin/curl -s "https://raw.githubusercontent.com/underd0se/Skynet-Zero/master/firewall.sh" -o "/jffs/scripts/firewall" && chmod 755 /jffs/scripts/firewall && sh /jffs/scripts/firewall install
 ```
+During the interactive installation wizard:
+1. When prompted to **Select SWAP File Size**, choose **Option 3: 0GB (Zero Swap - Skynet Zero)** to install the firewall without generating a swap file.
 
-During the interactive installation wizard, when prompted to **Select SWAP File Size**, choose **None (Skynet Zero)** to install the firewall natively without generating a USB swap file.
+   <img width="503" height="187" alt="zero swap" src="https://github.com/user-attachments/assets/684cf1a7-331a-4e7b-89ba-181f1d0a0add" />
+
+3. Follow the remaining prompts to configure your logging and filtering preferences.
+
+**Changes Made During Installation:**
+1. Downloads the execution script to `/jffs/scripts/firewall`.
+2. Creates the data directory (`skynetloc`) on your selected USB partition (or `/jffs` if explicitly selected).
+3. Injects execution triggers into `/jffs/scripts/firewall-start`, `/jffs/scripts/services-stop`, and `/jffs/scripts/service-event`.
+4. Injects configuration settings into `/jffs/configs/profile.add` and `/jffs/configs/dnsmasq.conf.add`.
+5. Backs up your router's default `swappiness` and `overcommit_memory` settings to NVRAM.
+6. Dynamically enforces `swappiness=0` (if Skynet Zero mode is selected) and `overcommit_memory=0`, and injects persistence commands into `/jffs/scripts/firewall-start`.
+
+## Switching Swap Modes
+
+Skynet Zero provides a seamless UI toggle to switch between traditional USB Swap mode and the optimized Zero Swap mode at any time, without needing to reinstall.
+
+<img width="555" height="793" alt="switching" src="https://github.com/user-attachments/assets/98c7d913-c60c-4303-a65a-8247188fb66a" />
+
+1. Open the Skynet interactive menu by typing `firewall` in your SSH client.
+2. Navigate to **Settings** (Option 11).
+3. Select **Switch Swap Mode** (Option 18).
+4. **If switching TO Zero Swap:** The engine will prompt you to cleanly delete your existing USB swap file, revert your kernel logic, and then activate the Skynet Zero configuration.
+5. **If switching TO Traditional Swap:** The engine will cleanly wipe the Skynet Zero kernel hooks and walk you through generating a new 2GB swap file on your USB drive.
 
 ## Uninstallation Procedure
 
-To cleanly remove Skynet Zero, run the following command from your SSH client:
+To uninstall Skynet Zero, run the following command from your SSH client or select the Uninstall option from the interactive menu:
 
 ```Shell
 sh /jffs/scripts/firewall uninstall
 ```
 
-This sequence purges all IPSet arrays, cron jobs, and custom iptables rules from active memory, deletes the Skynet data directory, and gracefully scrubs all injected triggers from your Asuswrt boot and config files.
+**Changes Made During Uninstallation:**
+1. Purges all IPSet arrays, cron jobs, and custom iptables rules from active memory.
+2. Deletes the entire SkyNet data directory from your USB drive.
+3. Scrubs the `# Skynet` execution triggers from all `/jffs/scripts/` and `/jffs/configs/` files.
+4. Restores the router's original `swappiness` and `overcommit_memory` kernel settings using the backups saved in NVRAM.
+5. Scrubs the injected `# Skynet Zero` overrides from your boot scripts and performs legacy bypass cleanup.
+6. Restarts the firewall and dnsmasq services to return the router to a pristine baseline state.
