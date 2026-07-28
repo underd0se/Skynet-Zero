@@ -8,15 +8,6 @@ Skynet Zero is an optimized version of the Asuswrt-Merlin firewall script design
 
 The original Skynet script requires a 2GB USB swap file. Because Asuswrt routers have limited RAM (e.g., 512MB), heavy operations like parsing massive IP sets or compiling malware blocklists frequently cause the Linux kernel to heavily utilize this swap file. While this prevents the router from crashing, it results in hundreds of megabytes of daily I/O writes to the USB flash drive, eventually destroying the drive through write-fatigue.
 
-## Changelog
-
-### v1.1.1
-- **2026-07-28**: Fixed fatal `arithmetic syntax error` crashes when loading the UI menu or running stats with an empty `logsize` config or missing `iptables` entries.
-- **2026-07-28**: Removed obsolete dynamic kernel overrides (swappiness/overcommit) to preserve native Asuswrt memory management and safely support third-party script swap files. Added proactive legacy boot injection cleanup.
-
-### v1.1.0-dev
-- **2026-07-27**: Implemented full Zero-Storage Direct Streaming Pipeline (fixed stats to extract from kernel RAM, bypassed /tmp writes for custom list imports).
-
 Skynet Zero solves this hardware degradation through a dynamic kernel optimization. When Skynet Zero mode is selected during installation, it alters the kernel's anonymous memory paging preference (`vm.swappiness=0`). 
 
 By explicitly instructing the Linux kernel to prioritize dropping the page cache over swapping anonymous memory, Skynet Zero forces the router to execute all heavy array compilations strictly in physical RAM. The USB swap file remains mounted to satisfy the kernel's virtual memory math (preventing `can't fork` allocation lockups), but it is functionally dormant. 
