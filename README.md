@@ -10,7 +10,7 @@ The original Skynet script requires a 2GB USB swap file. Because Asuswrt routers
 
 ## Changelog
 
-### v1.1.1-dev
+### v1.1.1
 - **2026-07-28**: Fixed fatal `arithmetic syntax error` crashes when loading the UI menu or running stats with an empty `logsize` config or missing `iptables` entries.
 - **2026-07-28**: Removed obsolete dynamic kernel overrides (swappiness/overcommit) to preserve native Asuswrt memory management and safely support third-party script swap files. Added proactive legacy boot injection cleanup.
 
