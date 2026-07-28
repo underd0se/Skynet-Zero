@@ -1,0 +1,5 @@
+# Skynet Zero globally targets Asuswrt (BusyBox ash/dash)
+# SC3043: In POSIX sh, 'local' is undefined (ash supports local, retaining prevents global scope pollution)
+# SC1090: Can't follow non-constant source (skynetcfg path is dynamic)
+# SC2154: 'deleteswap' is referenced but not assigned (dynamically assigned by Prompt_Input)
+disable=SC3043,SC1090,SC2154
