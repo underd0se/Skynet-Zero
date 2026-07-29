@@ -23,7 +23,7 @@ fi
 export LC_ALL=C
 mkdir -p /tmp/skynet/lists
 mkdir -p /jffs/addons/shared-whitelists
-skynetloc="$(grep -ow "skynetloc=.* # Skynet" /jffs/scripts/firewall-start 2>/dev/null | grep -vE "^#" | awk '{print $1}' | cut -c 11-)"
+skynetloc="$(awk -F'=' '/^[^#]*skynetloc=.* # Skynet/ {split($2,a," "); print a[1]; exit}' /jffs/scripts/firewall-start 2>/dev/null)"
 skynetcfg="${skynetloc}/skynet.cfg"
 skynetlog="${skynetloc}/skynet.log"
 skynetevents="${skynetloc}/events.log"
@@ -286,10 +286,10 @@ Check_Settings() {
 		Log info -s "Installing Scribe Plugin"
 		rm -rf "/opt/etc/syslog-ng.d/firewall" "/opt/etc/logrotate/firewall"
 		cp -p "/opt/share/syslog-ng/examples/skynet" "/opt/etc/syslog-ng.d"
-		syslogloc="$(grep -m1 "file(" "/opt/etc/syslog-ng.d/skynet" | awk -F '"' '{print $2}')"
+		syslogloc="$(awk -F'"' '/file\(/ {print $2; exit}' "/opt/etc/syslog-ng.d/skynet" 2>/dev/null)"
 		killall -HUP syslog-ng
 	elif [ -f "/opt/bin/scribe" ] && [ -f "/opt/etc/syslog-ng.d/skynet" ] && [ "$syslogloc" = "/tmp/syslog.log" ]; then
-		syslogloc="$(grep -m1 "file(" "/opt/etc/syslog-ng.d/skynet" | awk -F '"' '{print $2}')"
+		syslogloc="$(awk -F'"' '/file\(/ {print $2; exit}' "/opt/etc/syslog-ng.d/skynet" 2>/dev/null)"
 	fi
 
 	if nvram get wan0_ipaddr | Is_PrivateIP; then
@@ -597,29 +597,29 @@ Unload_LogIPTables() {
 Load_LogIPTables() {
 	if Is_Enabled "$logmode"; then
 		if [ "$(nvram get wgs_enable)" = "1" ]; then
-			pos1="$(iptables --line -vnL PREROUTING -t raw | grep -F "Skynet-Master dst" | grep -F "DROP" | grep -F "wgs" | awk '{s+=$1} END {print s+0}')"
+			pos1="$(iptables --line -vnL PREROUTING -t raw | awk '/Skynet-Master dst/ && /DROP/ && /wgs/ {print $1; exit}')"
 			iptables -t raw -I PREROUTING "$pos1" -i wgs+ -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j LOG --log-prefix "[BLOCKED - OUTBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 		if [ "$(nvram get vpn_server1_state)" != "0" ] || [ "$(nvram get vpn_server2_state)" != "0" ]; then
-			pos2="$(iptables --line -vnL PREROUTING -t raw | grep -F "Skynet-Master dst" | grep -F "DROP" | grep -F "tun" | awk '{s+=$1} END {print s+0}')"
+			pos2="$(iptables --line -vnL PREROUTING -t raw | awk '/Skynet-Master dst/ && /DROP/ && /tun/ {print $1; exit}')"
 			iptables -t raw -I PREROUTING "$pos2" -i tun2+ -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j LOG --log-prefix "[BLOCKED - OUTBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 		if [ "$filtertraffic" = "all" ] || [ "$filtertraffic" = "inbound" ]; then
-			pos3="$(iptables --line -nL PREROUTING -t raw | grep -F "Skynet-Master src" | grep -F "DROP" | awk '{s+=$1} END {print s+0}')"
+			pos3="$(iptables --line -nL PREROUTING -t raw | awk '/Skynet-Master src/ && /DROP/ {print $1; exit}')"
 			iptables -t raw -I PREROUTING "$pos3" -i "$iface" -m set ! --match-set Skynet-MasterWL src -m set --match-set Skynet-Master src -j LOG --log-prefix "[BLOCKED - INBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 		if [ "$filtertraffic" = "all" ] || [ "$filtertraffic" = "outbound" ]; then
-			pos4="$(iptables --line -vnL PREROUTING -t raw | grep -F "Skynet-Master dst" | grep -F "DROP" | grep -vF "tun" | grep -vF "wgs" | awk '{s+=$1} END {print s+0}')"
+			pos4="$(iptables --line -vnL PREROUTING -t raw | awk '/Skynet-Master dst/ && /DROP/ && !/tun/ && !/wgs/ {print $1; exit}')"
 			iptables -t raw -I PREROUTING "$pos4" -i br+ -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j LOG --log-prefix "[BLOCKED - OUTBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
-			pos5="$(iptables --line -nL OUTPUT -t raw | grep -F "Skynet-Master dst" | grep -F "DROP" | awk '{s+=$1} END {print s+0}')"
+			pos5="$(iptables --line -nL OUTPUT -t raw | awk '/Skynet-Master dst/ && /DROP/ {print $1; exit}')"
 			iptables -t raw -I OUTPUT "$pos5" -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j LOG --log-prefix "[BLOCKED - OUTBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 		if [ "$(nvram get fw_log_x)" = "drop" ] || [ "$(nvram get fw_log_x)" = "both" ] && Is_Enabled "$loginvalid"; then
-			pos6="$(iptables --line -nL logdrop | grep -F "DROP" | awk '{s+=$1} END {print s+0}')"
+			pos6="$(iptables --line -nL logdrop | awk '/DROP/ {print $1; exit}')"
 			iptables -I logdrop "$pos6" -m state --state NEW -j LOG --log-prefix "[BLOCKED - INVALID] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 		if Is_Enabled "$iotblocked" && Is_Enabled "$iotlogging"; then
-			pos7="$(iptables --line -nL FORWARD | grep -F "Skynet-IOT" | grep -F "DROP" | awk '{s+=$1} END {print s+0}')"
+			pos7="$(iptables --line -nL FORWARD | awk '/Skynet-IOT/ && /DROP/ {print $1; exit}')"
 			iptables -I FORWARD "$pos7" -i br+ -m set --match-set Skynet-IOT src -j LOG --log-prefix "[BLOCKED - IOT] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 	fi
@@ -895,7 +895,7 @@ Is_Numeric() {
 }
 
 Strip_Domain() {
-	sed 's~http[s]*://~~;s~/.*~~;s~www\.~~g;\~^$~d' | awk '!x[$0]++'
+	awk '{gsub(/https?:\/\//,""); gsub(/\/.*/,""); gsub(/^www\./,""); if($0!="" && !x[$0]++) print $0}'
 }
 
 LAN_CIDR_Lookup() {
@@ -1223,7 +1223,7 @@ Refresh_AiProtect() {
 
 Refresh_MBans() {
 	if grep -qF "[Manual Ban] TYPE=Domain" "$skynetevents"; then
-		awk '/\[Manual Ban\] TYPE=Domain/{if(!x[$9]++)print $9}' "$skynetevents" | sed 's~Host=~~g' >/tmp/skynet/mbans.list
+		awk '/\[Manual Ban\] TYPE=Domain/{gsub("Host=","",$9); if(!x[$9]++)print $9}' "$skynetevents" >/tmp/skynet/mbans.list
 		sed -i '\~\[Manual Ban\] TYPE=Domain~d;' "$skynetevents"
 		sed '\~add Skynet-Blacklist ~!d;\~ManualBanD~!d;s~ comment.*~~;s~add~del~g' "$skynetipset" | ipset restore -!
 		while IFS= read -r "domain"; do
@@ -1241,7 +1241,7 @@ Refresh_MBans() {
 
 Refresh_MWhitelist() {
 	if grep -qE "Manual Whitelist.* TYPE=Domain" "$skynetevents"; then
-		awk '/Manual Whitelist.* TYPE=Domain/{if(!x[$9]++)print $9}' "$skynetevents" | sed 's~Host=~~g' >/tmp/skynet/mwhitelist.list
+		awk '/Manual Whitelist.* TYPE=Domain/{gsub("Host=","",$9); if(!x[$9]++)print $9}' "$skynetevents" >/tmp/skynet/mwhitelist.list
 		sed -i '\~\[Manual Whitelist\] TYPE=Domain~d;' "$skynetevents"
 		sed '\~add Skynet-Whitelist ~!d;\~ManualWlistD~!d;s~ comment.*~~;s~add~del~g' "$skynetipset" | ipset restore -!
 		while IFS= read -r domain; do
@@ -7395,7 +7395,7 @@ debug)
 				if [ -n "$findswap" ]; then
 					swaplocation="$findswap"
 				elif [ -z "$findswap" ]; then
-					findswap="$(grep -m1 -F "file" "/proc/swaps" | awk '{print $1}')"
+					findswap="$(awk '/file/ {print $1; exit}' "/proc/swaps")"
 					if [ -n "$findswap" ]; then
 						swaplocation="$findswap"
 					else
