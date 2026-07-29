@@ -6,6 +6,11 @@ Skynet Zero is an optimized version of the Asuswrt-Merlin firewall script design
 
 ## Development Changelog
 
+### v1.1.4-dev
+- **2026-07-29**: Fully decoupled the core Skynet logic from the ASCII interactive UI by introducing a global `SILENT_MODE` intercept (via the `api` or `silent` flags), suppressing over 400 cosmetic outputs for flawless third-party scripting integration.
+- **2026-07-29**: Preserved AMTM's expected update behavior by explicitly excluding it from `SILENT_MODE` suppression, but implemented a targeted bypass for the massive ASCII logo to prevent UX clutter.
+- **2026-07-29**: Fixed a legacy race condition that caused `grep` errors when multiple `stats` or `search` operations ran concurrently by mapping temporary output files dynamically to process IDs (`$$`).
+
 ### v1.1.3-dev
 - **2026-07-29**: Eradicated pipeline anti-patterns. Consolidated multi-pipe `grep/awk/sed` chains across `Load_LogIPTables` and `Strip_Domain` into single native `awk` operations. Yielded up to 60% execution speedup and eliminated memory overhead caused by heavy subshell forks.
 
