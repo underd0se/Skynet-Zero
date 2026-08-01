@@ -6,6 +6,10 @@ Skynet Zero is an optimized version of the Asuswrt-Merlin firewall script design
 
 ## Development Changelog
 
+### v1.1.5-dev
+- **2026-08-01**: **[Hotfix]** Solved Asuswrt boot sequence race condition by background-forking Skynet (`&`) during the `firewall-start` hook, preventing it from stalling Asuswrt's internal init timers.
+- **2026-08-01**: **[Hotfix]** Wrapped asynchronous `restart_dnsmasq` calls in a 5-minute uptime check to prevent killing DNS resolution during the critical boot window, safely preserving Trend Micro `bwdpi` (QoS) and Diversion initialization.
+
 ### v1.1.4-dev
 - **2026-07-29**: Fully decoupled the core Skynet logic from the ASCII interactive UI by introducing a global `SILENT_MODE` intercept (via the `api` or `silent` flags), suppressing over 400 cosmetic outputs for flawless third-party scripting integration.
 - **2026-07-29**: Preserved AMTM's expected update behavior by explicitly excluding it from `SILENT_MODE` suppression, but implemented a targeted bypass for the massive ASCII logo to prevent UX clutter.
