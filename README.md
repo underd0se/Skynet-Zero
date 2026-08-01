@@ -16,7 +16,7 @@ A USB drive formatted for Asuswrt-Merlin to hold installation scripts and logs. 
 
 ## Installation
 
-**Via AMTM (Recommended):**
+### Via amtm:
 In your SSH Client, launch **amtm** and select the firewall installation option. 
 
 When prompted, amtm provides the option to install:
@@ -25,15 +25,16 @@ When prompted, amtm provides the option to install:
 
 Select **Option 2** to install Skynet Zero without generating a USB swap file. 
 
-<img width="503" height="187" alt="zero swap" src="https://github.com/user-attachments/assets/684cf1a7-331a-4e7b-89ba-181f1d0a0add" />
-
-Follow the remaining prompts to configure your preferences.
-
-**Via Manual Install:**
+### Manual Install:
 Alternatively, run the following command to install directly from the repository:
 ```Shell
 /usr/sbin/curl -s "https://raw.githubusercontent.com/underd0se/Skynet-Zero/master/firewall.sh" -o "/jffs/scripts/firewall" && chmod 755 /jffs/scripts/firewall && sh /jffs/scripts/firewall install
 ```
+
+Follow prompts to configure your preferences, and select option 3 when asked for Skynet Zero. 
+
+<img width="503" height="187" alt="zero swap" src="https://github.com/user-attachments/assets/684cf1a7-331a-4e7b-89ba-181f1d0a0add" />
+
 
 ## Switching Swap Modes
 
