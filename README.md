@@ -8,7 +8,7 @@ Skynet Zero optimizes the firewall script to eliminate the requirement for a USB
 
 * **Zero Swap Architecture:** Forces heavy array compilations strictly into physical RAM without causing `can't fork` lockups. Your USB drive is saved from daily I/O write fatigue.
 * **Concurrency & Thread Safety:** Utilizes a dynamic PID-based temporary file system (`$$`) to completely eliminate race conditions. Background Cron jobs and WebUI polling run simultaneously without colliding.
-* **AMTM Native Integration:** Natively integrated into Asuswrt-Merlin Terminal Menu (amtm).
+* **amtm Native Integration:** Natively integrated into Asuswrt-Merlin Terminal Menu (amtm).
 
 ## Requirements
 
