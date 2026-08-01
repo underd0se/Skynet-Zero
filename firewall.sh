@@ -11,19 +11,29 @@
 #                                                                                                           #
 #                                 Router Firewall And Security Enhancements                                 #
 #                      By Adamm (Forked by underd0se) -  https://github.com/underd0se/Skynet-Zero           #
-#                               29/07/2026 - v8.1.1-sz.1.1.2 (Zero Swap)                                    #
+#                               01/08/2026 - v8.1.1-sz.1.1.4 (Zero Swap)                                    #
 #############################################################################################################
 
 export PATH="/sbin:/bin:/usr/sbin:/usr/bin:$PATH"
 printf '\033[?7l'
-if [ "$1" != "amtmupdate" ]; then
+
+SILENT_MODE=0
+if [ "$1" = "api" ] || [ "$1" = "silent" ]; then
+	SILENT_MODE=1
+	[ "$1" = "api" ] && shift
+fi
+if echo "$@" | grep -q "silent"; then
+	SILENT_MODE=1
+fi
+
+if [ "$SILENT_MODE" = "0" ] && [ "$1" != "amtmupdate" ]; then
 	clear
 	sed -n '2,15p' "$0"
 fi
 export LC_ALL=C
 mkdir -p /tmp/skynet/lists
 mkdir -p /jffs/addons/shared-whitelists
-skynetloc="$(grep -ow "skynetloc=.* # Skynet" /jffs/scripts/firewall-start 2>/dev/null | grep -vE "^#" | awk '{print $1}' | cut -c 11-)"
+skynetloc="$(awk -F'=' '/^[^#]*skynetloc=.* # Skynet/ {split($2,a," "); print a[1]; exit}' /jffs/scripts/firewall-start 2>/dev/null)"
 skynetcfg="${skynetloc}/skynet.cfg"
 skynetlog="${skynetloc}/skynet.log"
 skynetevents="${skynetloc}/events.log"
@@ -170,6 +180,11 @@ Print_Colored() {
 	fi
 }
 
+UI_Echo() {
+	[ "$SILENT_MODE" = "1" ] && return 0
+	echo "$@"
+}
+
 # Specific wrappers
 Red() { Print_Colored '1;31' "$1"; }
 Grn() { Print_Colored '1;32' "$1"; }
@@ -286,10 +301,10 @@ Check_Settings() {
 		Log info -s "Installing Scribe Plugin"
 		rm -rf "/opt/etc/syslog-ng.d/firewall" "/opt/etc/logrotate/firewall"
 		cp -p "/opt/share/syslog-ng/examples/skynet" "/opt/etc/syslog-ng.d"
-		syslogloc="$(grep -m1 "file(" "/opt/etc/syslog-ng.d/skynet" | awk -F '"' '{print $2}')"
+		syslogloc="$(awk -F'"' '/file\(/ {print $2; exit}' "/opt/etc/syslog-ng.d/skynet" 2>/dev/null)"
 		killall -HUP syslog-ng
 	elif [ -f "/opt/bin/scribe" ] && [ -f "/opt/etc/syslog-ng.d/skynet" ] && [ "$syslogloc" = "/tmp/syslog.log" ]; then
-		syslogloc="$(grep -m1 "file(" "/opt/etc/syslog-ng.d/skynet" | awk -F '"' '{print $2}')"
+		syslogloc="$(awk -F'"' '/file\(/ {print $2; exit}' "/opt/etc/syslog-ng.d/skynet" 2>/dev/null)"
 	fi
 
 	if nvram get wan0_ipaddr | Is_PrivateIP; then
@@ -597,29 +612,29 @@ Unload_LogIPTables() {
 Load_LogIPTables() {
 	if Is_Enabled "$logmode"; then
 		if [ "$(nvram get wgs_enable)" = "1" ]; then
-			pos1="$(iptables --line -vnL PREROUTING -t raw | grep -F "Skynet-Master dst" | grep -F "DROP" | grep -F "wgs" | awk '{s+=$1} END {print s+0}')"
+			pos1="$(iptables --line -vnL PREROUTING -t raw | awk '/Skynet-Master dst/ && /DROP/ && /wgs/ {print $1; exit}')"
 			iptables -t raw -I PREROUTING "$pos1" -i wgs+ -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j LOG --log-prefix "[BLOCKED - OUTBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 		if [ "$(nvram get vpn_server1_state)" != "0" ] || [ "$(nvram get vpn_server2_state)" != "0" ]; then
-			pos2="$(iptables --line -vnL PREROUTING -t raw | grep -F "Skynet-Master dst" | grep -F "DROP" | grep -F "tun" | awk '{s+=$1} END {print s+0}')"
+			pos2="$(iptables --line -vnL PREROUTING -t raw | awk '/Skynet-Master dst/ && /DROP/ && /tun/ {print $1; exit}')"
 			iptables -t raw -I PREROUTING "$pos2" -i tun2+ -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j LOG --log-prefix "[BLOCKED - OUTBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 		if [ "$filtertraffic" = "all" ] || [ "$filtertraffic" = "inbound" ]; then
-			pos3="$(iptables --line -nL PREROUTING -t raw | grep -F "Skynet-Master src" | grep -F "DROP" | awk '{s+=$1} END {print s+0}')"
+			pos3="$(iptables --line -nL PREROUTING -t raw | awk '/Skynet-Master src/ && /DROP/ {print $1; exit}')"
 			iptables -t raw -I PREROUTING "$pos3" -i "$iface" -m set ! --match-set Skynet-MasterWL src -m set --match-set Skynet-Master src -j LOG --log-prefix "[BLOCKED - INBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 		if [ "$filtertraffic" = "all" ] || [ "$filtertraffic" = "outbound" ]; then
-			pos4="$(iptables --line -vnL PREROUTING -t raw | grep -F "Skynet-Master dst" | grep -F "DROP" | grep -vF "tun" | grep -vF "wgs" | awk '{s+=$1} END {print s+0}')"
+			pos4="$(iptables --line -vnL PREROUTING -t raw | awk '/Skynet-Master dst/ && /DROP/ && !/tun/ && !/wgs/ {print $1; exit}')"
 			iptables -t raw -I PREROUTING "$pos4" -i br+ -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j LOG --log-prefix "[BLOCKED - OUTBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
-			pos5="$(iptables --line -nL OUTPUT -t raw | grep -F "Skynet-Master dst" | grep -F "DROP" | awk '{s+=$1} END {print s+0}')"
+			pos5="$(iptables --line -nL OUTPUT -t raw | awk '/Skynet-Master dst/ && /DROP/ {print $1; exit}')"
 			iptables -t raw -I OUTPUT "$pos5" -m set ! --match-set Skynet-MasterWL dst -m set --match-set Skynet-Master dst -j LOG --log-prefix "[BLOCKED - OUTBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 		if [ "$(nvram get fw_log_x)" = "drop" ] || [ "$(nvram get fw_log_x)" = "both" ] && Is_Enabled "$loginvalid"; then
-			pos6="$(iptables --line -nL logdrop | grep -F "DROP" | awk '{s+=$1} END {print s+0}')"
+			pos6="$(iptables --line -nL logdrop | awk '/DROP/ {print $1; exit}')"
 			iptables -I logdrop "$pos6" -m state --state NEW -j LOG --log-prefix "[BLOCKED - INVALID] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 		if Is_Enabled "$iotblocked" && Is_Enabled "$iotlogging"; then
-			pos7="$(iptables --line -nL FORWARD | grep -F "Skynet-IOT" | grep -F "DROP" | awk '{s+=$1} END {print s+0}')"
+			pos7="$(iptables --line -nL FORWARD | awk '/Skynet-IOT/ && /DROP/ {print $1; exit}')"
 			iptables -I FORWARD "$pos7" -i br+ -m set --match-set Skynet-IOT src -j LOG --log-prefix "[BLOCKED - IOT] " --log-tcp-sequence --log-tcp-options --log-ip-options 2>/dev/null
 		fi
 	fi
@@ -819,7 +834,7 @@ Unload_Cron() {
 			cru d Skynet_genstats
 			;;
 		*)
-			echo "[*] Warning: Unknown Cron Job '$job'"
+			UI_Echo "[*] Warning: Unknown Cron Job '$job'"
 			;;
 		esac
 	done
@@ -829,30 +844,30 @@ Load_Cron() {
 	for job in "$@"; do
 		case "$job" in
 		save)
-			cru a Skynet_save "0 * * * * sh /jffs/scripts/firewall save"
+			cru a Skynet_save "0 * * * * sh /jffs/scripts/firewall save silent"
 			;;
 		banmalwaredaily)
 			hour=$(Generate_Random_Number 1 23)
-			cru a Skynet_banmalware "25 $hour * * * sh /jffs/scripts/firewall banmalware"
+			cru a Skynet_banmalware "25 $hour * * * sh /jffs/scripts/firewall banmalware silent"
 			;;
 		banmalwareweekly)
 			hour=$(Generate_Random_Number 1 23)
-			cru a Skynet_banmalware "25 $hour * * Mon sh /jffs/scripts/firewall banmalware"
+			cru a Skynet_banmalware "25 $hour * * Mon sh /jffs/scripts/firewall banmalware silent"
 			;;
 		autoupdate)
 			min=$(Generate_Random_Number 3 23)
-			cru a Skynet_autoupdate "$min 1 * * Mon sh /jffs/scripts/firewall update"
+			cru a Skynet_autoupdate "$min 1 * * Mon sh /jffs/scripts/firewall update silent"
 			;;
 		checkupdate)
 			min=$(Generate_Random_Number 3 23)
-			cru a Skynet_checkupdate "$min 1 * * Mon sh /jffs/scripts/firewall update check"
+			cru a Skynet_checkupdate "$min 1 * * Mon sh /jffs/scripts/firewall update check silent"
 			;;
 		genstats)
 			min=$(Generate_Random_Number 28 57)
-			cru a Skynet_genstats "$min */12 * * * sh /jffs/scripts/firewall debug genstats"
+			cru a Skynet_genstats "$min */12 * * * sh /jffs/scripts/firewall debug genstats silent"
 			;;
 		*)
-			echo "[*] Warning: Unknown Cron Job '$job'"
+			UI_Echo "[*] Warning: Unknown Cron Job '$job'"
 			;;
 		esac
 	done
@@ -895,7 +910,7 @@ Is_Numeric() {
 }
 
 Strip_Domain() {
-	sed 's~http[s]*://~~;s~/.*~~;s~www\.~~g;\~^$~d' | awk '!x[$0]++'
+	awk '{gsub(/https?:\/\//,""); gsub(/\/.*/,""); gsub(/^www\./,""); if($0!="" && !x[$0]++) print $0}'
 }
 
 LAN_CIDR_Lookup() {
@@ -949,7 +964,7 @@ Generate_Ban_Stats() {
 		)"
 		[ -z "$banreason" ] && ! ipset -q test Skynet-Blacklist "$ipaddr" && ! ipset -q test Skynet-BlockedRanges "$ipaddr" && banreason="No Longer Blacklisted"
 		[ "${#banreason}" -gt 45 ] && banreason="$(printf '%s' "$banreason" | cut -c1-45)"
-		printf '%-15s %-4s | %-55s | %-45s | %-60s \n' "$statdata" "$country" "https://otx.alienvault.com/indicator/ip/${statdata}" "$banreason" "$(grep -F "$statdata" /tmp/skynet/skynetstats.txt | awk '{print $1}' | xargs)"
+		printf '%-15s %-4s | %-55s | %-45s | %-60s \n' "$statdata" "$country" "https://otx.alienvault.com/indicator/ip/${statdata}" "$banreason" "$(grep -F "$statdata" /tmp/skynet/skynetstats_$$.txt | awk '{print $1}' | xargs)"
 		;;
 	2)
 		hits="$(echo "$statdata" | awk '{s+=$1} END {print s+0}')"
@@ -992,15 +1007,16 @@ Generate_Ban_Stats() {
 		)"
 		[ -z "$banreason" ] && ! ipset -q test Skynet-Blacklist "$ipaddr" && ! ipset -q test Skynet-BlockedRanges "$ipaddr" && banreason="No Longer Blacklisted"
 		[ "${#banreason}" -gt 45 ] && banreason="$(printf '%s' "$banreason" | cut -c1-45)"
-		printf '%-10s | %-15s %-4s | %-55s | %-45s | %-60s\n' "${hits}x" "$ipaddr" "$country" "https://otx.alienvault.com/indicator/ip/${ipaddr}" "$banreason" "$(grep -F "$ipaddr" /tmp/skynet/skynetstats.txt | awk '{print $1}' | xargs)"
+		printf '%-10s | %-15s %-4s | %-55s | %-45s | %-60s\n' "${hits}x" "$ipaddr" "$country" "https://otx.alienvault.com/indicator/ip/${ipaddr}" "$banreason" "$(grep -F "$ipaddr" /tmp/skynet/skynetstats_$$.txt | awk '{print $1}' | xargs)"
 		;;
 	*)
-		echo "[*] Error - No Stats Specified To Load"
+		UI_Echo "[*] Error - No Stats Specified To Load"
 		;;
 	esac
 }
 
 Display_Header() {
+	[ "$SILENT_MODE" = "1" ] && return 0
 	case "$1" in
 	1)
 		printf '\n\n%-20s | %-55s | %-45s | %-60s\n' "--------------" "--------------" "--------------" "----------------------"
@@ -1054,17 +1070,19 @@ Display_Header() {
 		printf '%-10s | %-18s | %-10s | %-18s | %-10s | %-20s\n\n' "---------" "-------------" "---------" "------------------" "---------" "------------------"
 		;;
 	*)
-		echo "[*] Error - No Header Specified To Load"
+		UI_Echo "[*] Error - No Header Specified To Load"
 		;;
 	esac
 }
 
 Display_Message() {
+	[ "$SILENT_MODE" = "1" ] && return 0
 	btime="$(date +%s)"
 	printf "%-35s | " "$1"
 }
 
 Display_Result() {
+	[ "$SILENT_MODE" = "1" ] && return 0
 	result="$(Grn "[$(($(date +%s) - btime))s]")"
 	printf '%-8s\n' "$result"
 }
@@ -1223,7 +1241,7 @@ Refresh_AiProtect() {
 
 Refresh_MBans() {
 	if grep -qF "[Manual Ban] TYPE=Domain" "$skynetevents"; then
-		awk '/\[Manual Ban\] TYPE=Domain/{if(!x[$9]++)print $9}' "$skynetevents" | sed 's~Host=~~g' >/tmp/skynet/mbans.list
+		awk '/\[Manual Ban\] TYPE=Domain/{gsub("Host=","",$9); if(!x[$9]++)print $9}' "$skynetevents" >/tmp/skynet/mbans.list
 		sed -i '\~\[Manual Ban\] TYPE=Domain~d;' "$skynetevents"
 		sed '\~add Skynet-Blacklist ~!d;\~ManualBanD~!d;s~ comment.*~~;s~add~del~g' "$skynetipset" | ipset restore -!
 		while IFS= read -r "domain"; do
@@ -1241,7 +1259,7 @@ Refresh_MBans() {
 
 Refresh_MWhitelist() {
 	if grep -qE "Manual Whitelist.* TYPE=Domain" "$skynetevents"; then
-		awk '/Manual Whitelist.* TYPE=Domain/{if(!x[$9]++)print $9}' "$skynetevents" | sed 's~Host=~~g' >/tmp/skynet/mwhitelist.list
+		awk '/Manual Whitelist.* TYPE=Domain/{gsub("Host=","",$9); if(!x[$9]++)print $9}' "$skynetevents" >/tmp/skynet/mwhitelist.list
 		sed -i '\~\[Manual Whitelist\] TYPE=Domain~d;' "$skynetevents"
 		sed '\~add Skynet-Whitelist ~!d;\~ManualWlistD~!d;s~ comment.*~~;s~add~del~g' "$skynetipset" | ipset restore -!
 		while IFS= read -r domain; do
@@ -1521,7 +1539,7 @@ Log() {
 		logger -s -t "$tag" "$msg"
 	else
 		logger -t "$tag" "$msg"
-		echo "$msg"
+		UI_Echo "$msg"
 	fi
 }
 
@@ -1535,7 +1553,7 @@ Run_Stats() {
 		echo
 	fi
 	if [ ! -s "$skynetlog" ] && [ ! -s "$skynetevents" ]; then
-		echo "[*] No Logging Data Detected - Give This Time To Generate"
+		UI_Echo "[*] No Logging Data Detected - Give This Time To Generate"
 		echo
 		exit 0
 	fi
@@ -1552,29 +1570,29 @@ Run_Stats() {
 	case "$2" in
 	reset)
 		Purge_Logs "force"
-		echo "[i] Stat Data Reset"
+		UI_Echo "[i] Stat Data Reset"
 		;;
 	remove)
 		case "$3" in
 		ip)
 			if ! echo "$4" | Is_IP; then
-				echo "[*] $4 Is Not A Valid IP"
+				UI_Echo "[*] $4 Is Not A Valid IP"
 				echo
 				exit 2
 			fi
 			logcount="$(grep -c "=$4 " "$skynetlog")"
 			sed -i "\\~=$4 ~d" "$skynetlog"
-			echo "[i] $logcount Log Entries Removed Containing IP $4"
+			UI_Echo "[i] $logcount Log Entries Removed Containing IP $4"
 			;;
 		port)
 			if ! echo "$4" | Is_Port || [ "$4" -gt "65535" ]; then
-				echo "[*] $4 Is Not A Valid Port"
+				UI_Echo "[*] $4 Is Not A Valid Port"
 				echo
 				exit 2
 			fi
 			logcount="$(grep -c "PT=$4 " "$skynetlog")"
 			sed -i "\\~=$4 ~d" "$skynetlog"
-			echo "[i] $logcount Log Entries Removed Containing Port $4"
+			UI_Echo "[i] $logcount Log Entries Removed Containing Port $4"
 			;;
 		*)
 			Command_Not_Recognized
@@ -1583,23 +1601,23 @@ Run_Stats() {
 		;;
 	search)
 		if Is_Enabled "$extendedstats"; then
-			grep -hE 'reply.* is ([0-9]{1,3}\.){3}[0-9]{1,3}$' /opt/var/log/dnsmasq* | awk '{printf "%s %s\n", $(NF-2), $NF}' | awk '!x[$0]++' | Strip_Domain >/tmp/skynet/skynetstats.txt
+			grep -hE 'reply.* is ([0-9]{1,3}\.){3}[0-9]{1,3}$' /opt/var/log/dnsmasq* | awk '{printf "%s %s\n", $(NF-2), $NF}' | awk '!x[$0]++' | Strip_Domain >/tmp/skynet/skynetstats_$$.txt
 			printf '   \b\b\b'
 		else
-			touch "/tmp/skynet/skynetstats.txt"
+			touch "/tmp/skynet/skynetstats_$$.txt"
 		fi
 		case "$3" in
 		port)
 			if ! echo "$4" | Is_Port || [ "$4" -gt "65535" ]; then
-				echo "[*] $4 Is Not A Valid Port"
+				UI_Echo "[*] $4 Is Not A Valid Port"
 				echo
 				exit 2
 			fi
 			if [ "$5" -eq "$5" ] 2>/dev/null; then counter="$5"; fi
-			echo "[i] Port $4 First Tracked On $(grep -m1 -F "PT=$4 " "$skynetlog" | awk '{printf "%s %s %s\n", $1, $2, $3}')"
-			echo "[i] Port $4 Last Tracked On $(grep -F "PT=$4 " "$skynetlog" | tail -1 | awk '{printf "%s %s %s\n", $1, $2, $3}')"
-			echo "[i] $(grep -Foc "PT=$4 " "$skynetlog") Attempts Total"
-			echo "[i] $(grep -F "PT=$4 " "$skynetlog" | grep -oE ' SRC=[0-9,\.]* ' | awk '!x[$0]++' | wc -l) Unique IPs"
+			UI_Echo "[i] Port $4 First Tracked On $(grep -m1 -F "PT=$4 " "$skynetlog" | awk '{printf "%s %s %s\n", $1, $2, $3}')"
+			UI_Echo "[i] Port $4 Last Tracked On $(grep -F "PT=$4 " "$skynetlog" | tail -1 | awk '{printf "%s %s %s\n", $1, $2, $3}')"
+			UI_Echo "[i] $(grep -Foc "PT=$4 " "$skynetlog") Attempts Total"
+			UI_Echo "[i] $(grep -F "PT=$4 " "$skynetlog" | grep -oE ' SRC=[0-9,\.]* ' | awk '!x[$0]++' | wc -l) Unique IPs"
 			echo
 			echo
 			Red "First Block Tracked On Port $4;"
@@ -1612,12 +1630,12 @@ Run_Stats() {
 			;;
 		ip)
 			if ! Check_Connection; then
-				echo "[*] Connection Error Detected - Exiting"
+				UI_Echo "[*] Connection Error Detected - Exiting"
 				echo
 				exit 1
 			fi
 			if ! echo "$4" | Is_IP; then
-				echo "[*] $4 Is Not A Valid IP"
+				UI_Echo "[*] $4 Is Not A Valid IP"
 				echo
 				exit 2
 			fi
@@ -1678,12 +1696,12 @@ Run_Stats() {
 			Show_Associated_Domains "$ip"
 			if Is_Enabled "$lookupcountry"; then
 				country="$(curl -fsSL --retry 3 --max-time 6 "https://api.db-ip.com/v2/free/${4}/countryCode/" 2>/dev/null | grep -E '^[A-Z]{2}$' || echo '**')"
-				echo "[i] IP Location - $country"
+				UI_Echo "[i] IP Location - $country"
 				echo
 			fi
-			echo "[i] $4 First Tracked On $(grep -m1 -F "=$4 " "$skynetlog" | awk '{printf "%s %s %s\n", $1, $2, $3}')"
-			echo "[i] $4 Last Tracked On $(grep -F "=$4 " "$skynetlog" | tail -1 | awk '{printf "%s %s %s\n", $1, $2, $3}')"
-			echo "[i] $(grep -Foc "=$4 " "$skynetlog") Blocks Total"
+			UI_Echo "[i] $4 First Tracked On $(grep -m1 -F "=$4 " "$skynetlog" | awk '{printf "%s %s %s\n", $1, $2, $3}')"
+			UI_Echo "[i] $4 Last Tracked On $(grep -F "=$4 " "$skynetlog" | tail -1 | awk '{printf "%s %s %s\n", $1, $2, $3}')"
+			UI_Echo "[i] $(grep -Foc "=$4 " "$skynetlog") Blocks Total"
 			echo
 			echo
 			Red "Event Log Entries From $4;"
@@ -1710,12 +1728,12 @@ Run_Stats() {
 			;;
 		domain)
 			if ! Check_Connection; then
-				echo "[*] Connection Error Detected - Exiting"
+				UI_Echo "[*] Connection Error Detected - Exiting"
 				echo
 				exit 1
 			fi
 			if [ -z "$4" ]; then
-				echo "[*] Domain Field Can't Be Empty - Please Try Again"
+				UI_Echo "[*] Domain Field Can't Be Empty - Please Try Again"
 				echo
 				exit 2
 			fi
@@ -1778,9 +1796,9 @@ Run_Stats() {
 					if Is_Enabled "$lookupcountry"; then
 						country="$(curl -fsSL --retry 3 --max-time 6 "https://api.db-ip.com/v2/free/${ip}/countryCode/" 2>/dev/null | grep -E '^[A-Z]{2}$' || echo '**')"
 					fi
-					echo "[i] $ip First Tracked On $(grep -m1 -F "=$ip " "$skynetlog" | awk '{printf "%s %s %s\n", $1, $2, $3}')"
-					echo "[i] $ip Last Tracked On $(grep -F "=$ip " "$skynetlog" | tail -1 | awk '{printf "%s %s %s\n", $1, $2, $3}')"
-					echo "[i] $(grep -Foc "=$ip " "$skynetlog") Blocks Total"
+					UI_Echo "[i] $ip First Tracked On $(grep -m1 -F "=$ip " "$skynetlog" | awk '{printf "%s %s %s\n", $1, $2, $3}')"
+					UI_Echo "[i] $ip Last Tracked On $(grep -F "=$ip " "$skynetlog" | tail -1 | awk '{printf "%s %s %s\n", $1, $2, $3}')"
+					UI_Echo "[i] $(grep -Foc "=$ip " "$skynetlog") Blocks Total"
 					echo
 					echo
 					Red "Event Log Entries From $ip;"
@@ -1812,12 +1830,12 @@ Run_Stats() {
 		malware)
 			Check_Lock "$@"
 			if ! Check_Connection; then
-				echo "[*] Connection Error Detected - Exiting"
+				UI_Echo "[*] Connection Error Detected - Exiting"
 				echo
 				exit 1
 			fi
 			if ! echo "$4" | Is_IPRange; then
-				echo "[*] $4 Is Not A Valid IP/Range"
+				UI_Echo "[*] $4 Is Not A Valid IP/Range"
 				echo
 				exit 2
 			fi
@@ -1876,14 +1894,14 @@ Run_Stats() {
 			;;
 		device)
 			if ! echo "$4" | Is_IP; then
-				echo "[*] $4 Is Not A Valid IP"
+				UI_Echo "[*] $4 Is Not A Valid IP"
 				echo
 				exit 2
 			fi
 			if [ "$5" -eq "$5" ] 2>/dev/null; then counter="$5"; fi
-			echo "[i] $4 First Tracked On $(grep -m1 -E "OUTBOUND.* SRC=$4 " "$skynetlog" | awk '{printf "%s %s %s\n", $1, $2, $3}')"
-			echo "[i] $4 Last Tracked On $(grep -E "OUTBOUND.* SRC=$4 " "$skynetlog" | tail -1 | awk '{printf "%s %s %s\n", $1, $2, $3}')"
-			echo "[i] $(grep -Eoc -E "OUTBOUND.* SRC=$4 " "$skynetlog") Blocks Total"
+			UI_Echo "[i] $4 First Tracked On $(grep -m1 -E "OUTBOUND.* SRC=$4 " "$skynetlog" | awk '{printf "%s %s %s\n", $1, $2, $3}')"
+			UI_Echo "[i] $4 Last Tracked On $(grep -E "OUTBOUND.* SRC=$4 " "$skynetlog" | tail -1 | awk '{printf "%s %s %s\n", $1, $2, $3}')"
+			UI_Echo "[i] $(grep -Eoc -E "OUTBOUND.* SRC=$4 " "$skynetlog") Blocks Total"
 			echo
 			echo
 			Red "Device Name;"
@@ -1915,8 +1933,8 @@ Run_Stats() {
 			if [ "$4" -eq "$4" ] 2>/dev/null; then counter="$4"; fi
 			sed '\~Skynet: \[#\] ~!d' "$syslog1loc" "$syslogloc" 2>/dev/null >>"$skynetevents"
 			sed -i '\~Skynet: \[#\] ~d' "$syslog1loc" "$syslogloc" 2>/dev/null
-			echo "[i] First Report Tracked On $(grep -m1 -F "Skynet: [#] " "$skynetevents" | awk '{printf "%s %s %s\n", $1, $2, $3}')"
-			echo "[i] Last Report Tracked On $(grep -F "Skynet: [#] " "$skynetevents" | tail -1 | awk '{printf "%s %s %s\n", $1, $2, $3}')"
+			UI_Echo "[i] First Report Tracked On $(grep -m1 -F "Skynet: [#] " "$skynetevents" | awk '{printf "%s %s %s\n", $1, $2, $3}')"
+			UI_Echo "[i] Last Report Tracked On $(grep -F "Skynet: [#] " "$skynetevents" | tail -1 | awk '{printf "%s %s %s\n", $1, $2, $3}')"
 			echo
 			echo
 			Red "First Report Tracked;"
@@ -1928,8 +1946,8 @@ Run_Stats() {
 			;;
 		invalid)
 			if [ "$4" -eq "$4" ] 2>/dev/null; then counter="$4"; fi
-			echo "[i] First Invalid Block Tracked On $(grep -m1 -F "BLOCKED - INVALID" "$skynetlog" | awk '{printf "%s %s %s\n", $1, $2, $3}')"
-			echo "[i] Last Invalid Block Tracked On $(grep -F "BLOCKED - INVALID" "$skynetlog" | tail -1 | awk '{printf "%s %s %s\n", $1, $2, $3}')"
+			UI_Echo "[i] First Invalid Block Tracked On $(grep -m1 -F "BLOCKED - INVALID" "$skynetlog" | awk '{printf "%s %s %s\n", $1, $2, $3}')"
+			UI_Echo "[i] Last Invalid Block Tracked On $(grep -F "BLOCKED - INVALID" "$skynetlog" | tail -1 | awk '{printf "%s %s %s\n", $1, $2, $3}')"
 			echo
 			echo
 			Red "First Report Tracked;"
@@ -1980,8 +1998,8 @@ Run_Stats() {
 			;;
 		iot)
 			if [ "$4" -eq "$4" ] 2>/dev/null; then counter="$4"; fi
-			echo "[i] First IOT Block Tracked On $(grep -m1 -F "BLOCKED - IOT" "$skynetlog" | awk '{printf "%s %s %s\n", $1, $2, $3}')"
-			echo "[i] Last IOT Block Tracked On $(grep -F "BLOCKED - IOT" "$skynetlog" | tail -1 | awk '{printf "%s %s %s\n", $1, $2, $3}')"
+			UI_Echo "[i] First IOT Block Tracked On $(grep -m1 -F "BLOCKED - IOT" "$skynetlog" | awk '{printf "%s %s %s\n", $1, $2, $3}')"
+			UI_Echo "[i] Last IOT Block Tracked On $(grep -F "BLOCKED - IOT" "$skynetlog" | tail -1 | awk '{printf "%s %s %s\n", $1, $2, $3}')"
 			echo
 			echo
 			Red "First IOT Block Tracked;"
@@ -2021,10 +2039,10 @@ Run_Stats() {
 			;;
 		esac
 		if Is_Enabled "$extendedstats"; then
-			grep -hE 'reply.* is ([0-9]{1,3}\.){3}[0-9]{1,3}$' /opt/var/log/dnsmasq* | awk '{printf "%s %s\n", $(NF-2), $NF}' | awk '!x[$0]++' | Strip_Domain >/tmp/skynet/skynetstats.txt
+			grep -hE 'reply.* is ([0-9]{1,3}\.){3}[0-9]{1,3}$' /opt/var/log/dnsmasq* | awk '{printf "%s %s\n", $(NF-2), $NF}' | awk '!x[$0]++' | Strip_Domain >/tmp/skynet/skynetstats_$$.txt
 			printf '   \b\b\b'
 		else
-			touch "/tmp/skynet/skynetstats.txt"
+			touch "/tmp/skynet/skynetstats_$$.txt"
 		fi
 		Display_Header "10"
 		Red "Top $counter Targeted Ports (Inbound);"
@@ -2062,7 +2080,7 @@ Run_Stats() {
 		done
 		;;
 	esac
-	rm -rf /tmp/skynet/skynetstats.txt
+	rm -rf /tmp/skynet/skynetstats_$$.txt
 }
 
 Generate_Stats() {
@@ -2406,13 +2424,13 @@ Download_File() {
 
 	if [ "$remote_md5" != "$local_md5" ] || [ "$force" = "-f" ]; then
 		if curl -fsSL --retry 3 --connect-timeout 3 --max-time 6 --retry-delay 1 --retry-all-errors "$fullurl" -o "$dest"; then
-			echo "[i] Updated $filename"
+			UI_Echo "[i] Updated $filename"
 		else
 			Log error "Failed to update $filename"
 		fi
 
 	else
-		echo "[i] No change to $filename (MD5 matched)"
+		UI_Echo "[i] No change to $filename (MD5 matched)"
 	fi
 }
 
@@ -2461,7 +2479,7 @@ Get_LocalName() {
 }
 
 Manage_Device() {
-	echo "[i] Looking for available partitions"
+	UI_Echo "[i] Looking for available partitions"
 
 	# Build $@ = list of mountpoints whose fs is ext2/3/4, vfat, exfat, ntfs
 	set --
@@ -2475,9 +2493,9 @@ Manage_Device() {
 
 	# If none found, exit immediately
 	if [ $# -eq 0 ]; then
-		echo "[*] No compatible USB partitions found!"
-		echo "[*] A mounted USB drive is strictly required to protect your router's internal flash memory from degradation."
-		echo "[*] Exiting!"
+		UI_Echo "[*] No compatible USB partitions found!"
+		UI_Echo "[*] A mounted USB drive is strictly required to protect your router's internal flash memory from degradation."
+		UI_Echo "[*] Exiting!"
 		echo
 		exit 1
 	fi
@@ -2499,12 +2517,12 @@ Manage_Device() {
 
 		case "$partitionNumber" in
 		e | exit)
-			echo "[*] Exiting!"
+			UI_Echo "[*] Exiting!"
 			echo
 			exit 0
 			;;
 		'' | *[!0-9]* | 0)
-			echo "[*] Invalid partition number!"
+			UI_Echo "[*] Invalid partition number!"
 			;;
 		*)
 			if [ "$partitionNumber" -ge 1 ] && [ "$partitionNumber" -le "$idx" ]; then
@@ -2519,14 +2537,14 @@ Manage_Device() {
 
 				# Test writability
 				if ! touch "$device/rwtest" 2>/dev/null; then
-					echo "[*] Writing to $device failed - try another"
+					UI_Echo "[*] Writing to $device failed - try another"
 					continue
 				else
 					rm -f "$device/rwtest"
 					break
 				fi
 			else
-				echo "[*] Invalid partition number!"
+				UI_Echo "[*] Invalid partition number!"
 			fi
 			;;
 		esac
@@ -2552,7 +2570,7 @@ Create_Swap() {
 			break
 			;;
 		3)
-			echo "[i] Proceeding without SWAP file (Skynet Zero mode)"
+			UI_Echo "[i] Proceeding without SWAP file (Skynet Zero mode)"
 			echo
 
 			swaplocation="${device}/myswap.swp"
@@ -2564,7 +2582,7 @@ Create_Swap() {
 			return 0
 			;;
 		e | exit)
-			echo "[*] Exiting!"
+			UI_Echo "[*] Exiting!"
 			echo
 			exit 0
 			;;
@@ -2586,14 +2604,14 @@ Create_Swap() {
 	avail_kb=$(df -k "$device" | awk 'NR==2 {print $4}')
 	avail_mb=$((avail_kb / 1024))
 	if [ -z "$avail_kb" ] || [ "$avail_kb" -lt "$swapsize_kb" ]; then
-		echo "[*] Not enough free space on $device (${avail_mb}MB available)"
+		UI_Echo "[*] Not enough free space on $device (${avail_mb}MB available)"
 		echo
 		return 1
 	fi
 
 	# 4) Create, enable swap
 	swapsize_mb=$((swapsize_kb / 1024))
-	echo "[i] Creating ${swapsize_mb}MB swap file at $swaplocation"
+	UI_Echo "[i] Creating ${swapsize_mb}MB swap file at $swaplocation"
 	echo
 	dd if=/dev/zero bs=1k count="$swapsize_kb" of="$swaplocation" 2>/dev/null
 	mkswap "$swaplocation"
@@ -2610,7 +2628,7 @@ Create_Swap() {
 
 	# 7) Done!
 	echo
-	echo "[i] Swap file created at $swaplocation"
+	UI_Echo "[i] Swap file created at $swaplocation"
 	echo
 }
 
@@ -2621,13 +2639,13 @@ Return_To_Menu() {
 }
 
 Invalid_Option() {
-	echo "[*] $1 Isn't An Option!"
+	UI_Echo "[*] $1 Isn't An Option!"
 	echo
 }
 
 Ensure_Running() {
 	if ! Check_IPSets || ! Check_IPTables; then
-		echo "[*] Skynet Not Running - Exiting"
+		UI_Echo "[*] Skynet Not Running - Exiting"
 		echo
 		Load_Menu
 		return 1 # indicate failure
@@ -2997,7 +3015,7 @@ Load_Menu() {
 					option2="ip"
 					Prompt_Typed "option3" "IP" "Input IP To Ban:"
 					if ! echo "$option3" | Is_IP; then
-						echo "[*] $option3 Is Not A Valid IP"
+						UI_Echo "[*] $option3 Is Not A Valid IP"
 						echo
 						unset "option2" "option3"
 						continue
@@ -3008,7 +3026,7 @@ Load_Menu() {
 					option2="range"
 					Prompt_Typed "option3" "Range" "Input Range To Unban:"
 					if ! echo "$option3" | Is_Range; then
-						echo "[*] $option3 Is Not A Valid Range"
+						UI_Echo "[*] $option3 Is Not A Valid Range"
 						echo
 						unset "option2" "option3"
 						continue
@@ -3019,7 +3037,7 @@ Load_Menu() {
 					option2="domain"
 					Prompt_Typed "option3" "URL" "Input Domain To Unban:"
 					if [ -z "$option3" ]; then
-						echo "[*] URL Field Can't Be Empty - Please Try Again"
+						UI_Echo "[*] URL Field Can't Be Empty - Please Try Again"
 						echo
 						unset "option2" "option3"
 						continue
@@ -3030,13 +3048,13 @@ Load_Menu() {
 					option2="comment"
 					Prompt_Typed "option3" "Comment" "Remove Bans Matching Comment:"
 					if [ "${#option3}" -gt "255" ]; then
-						echo "[*] $option3 Is Not A Valid Comment. 255 Chars Max"
+						UI_Echo "[*] $option3 Is Not A Valid Comment. 255 Chars Max"
 						echo
 						unset "option2" "option3"
 						continue
 					fi
 					if [ -z "${option3}" ]; then
-						echo "[*] Comment Field Can't Be Empty - Please Try Again"
+						UI_Echo "[*] Comment Field Can't Be Empty - Please Try Again"
 						echo
 						unset "option2" "option3"
 						continue
@@ -3051,7 +3069,7 @@ Load_Menu() {
 					option2="asn"
 					Prompt_Typed "option3" "ASN" "Input ASN To Unban:"
 					if ! echo "$option3" | Is_ASN; then
-						echo "[*] $option3 Is Not A Valid ASN"
+						UI_Echo "[*] $option3 Is Not A Valid ASN"
 						echo
 						unset "option2" "option3"
 						continue
@@ -3098,14 +3116,14 @@ Load_Menu() {
 					option2="ip"
 					Prompt_Typed "option3" "IP" "Input IP To Ban:"
 					if ! echo "$option3" | Is_IP; then
-						echo "[*] $option3 Is Not A Valid IP"
+						UI_Echo "[*] $option3 Is Not A Valid IP"
 						echo
 						unset "option2" "option3"
 						continue
 					fi
 					Prompt_Typed "option4" "Comment" "Input Comment For Ban:"
 					if [ "${#option4}" -gt "244" ]; then
-						echo "[*] $option4 Is Not A Valid Comment. 244 Chars Max"
+						UI_Echo "[*] $option4 Is Not A Valid Comment. 244 Chars Max"
 						echo
 						unset "option2" "option3" "option4"
 						continue
@@ -3116,14 +3134,14 @@ Load_Menu() {
 					option2="range"
 					Prompt_Typed "option3" "Range" "Input Range To Ban:"
 					if ! echo "$option3" | Is_Range; then
-						echo "[*] $option3 Is Not A Valid Range"
+						UI_Echo "[*] $option3 Is Not A Valid Range"
 						echo
 						unset "option2" "option3"
 						continue
 					fi
 					Prompt_Typed "option4" "Comment" "Input Comment For Ban:"
 					if [ "${#option4}" -gt "243" ]; then
-						echo "[*] $option4 Is Not A Valid Comment. 243 Chars Max"
+						UI_Echo "[*] $option4 Is Not A Valid Comment. 243 Chars Max"
 						echo
 						unset "option2" "option3" "option4"
 						continue
@@ -3134,7 +3152,7 @@ Load_Menu() {
 					option2="domain"
 					Prompt_Typed "option3" "URL" "Input Domain To Ban:"
 					if [ -z "$option3" ]; then
-						echo "[*] URL Field Can't Be Empty - Please Try Again"
+						UI_Echo "[*] URL Field Can't Be Empty - Please Try Again"
 						echo
 						unset "option2" "option3"
 						continue
@@ -3146,13 +3164,13 @@ Load_Menu() {
 					if [ -n "$countrylist" ]; then echo "Countries Currently Banned: (${countrylist})"; fi
 					Prompt_Typed "option3" "Countries" "Input Country Abbreviations To Ban:"
 					if [ -z "$option3" ]; then
-						echo "[*] Country Field Can't Be Empty - Please Try Again"
+						UI_Echo "[*] Country Field Can't Be Empty - Please Try Again"
 						echo
 						unset "option2" "option3"
 						continue
 					fi
 					if echo "$option3" | grep -qF "\""; then
-						echo "[*] Country Field Can't Include Quotes - Please Try Again"
+						UI_Echo "[*] Country Field Can't Include Quotes - Please Try Again"
 						echo
 						unset "option2" "option3"
 						continue
@@ -3163,7 +3181,7 @@ Load_Menu() {
 					option2="asn"
 					Prompt_Typed "option3" "ASN" "Input ASN To Ban:"
 					if ! echo "$option3" | Is_ASN; then
-						echo "[*] $option3 Is Not A Valid ASN"
+						UI_Echo "[*] $option3 Is Not A Valid ASN"
 						echo
 						unset "option2" "option3"
 						continue
@@ -3200,7 +3218,7 @@ Load_Menu() {
 				2)
 					Prompt_Typed "option2" "URL" "Input Custom Filter List URL:"
 					if [ -z "$option2" ]; then
-						echo "[*] URL Field Can't Be Empty - Please Try Again"
+						UI_Echo "[*] URL Field Can't Be Empty - Please Try Again"
 						echo
 						unset "option2"
 						continue
@@ -3215,7 +3233,7 @@ Load_Menu() {
 					option2="exclude"
 					Prompt_Typed "option3" "Lists" "Input Names Of Lists To Exclude Seperated By Pipes Example - list1.ipset|list2.ipset|list3.ipset"
 					if [ -z "$option3" ]; then
-						echo "[*] Exclusion List Can't Be Empty - Please Try Again"
+						UI_Echo "[*] Exclusion List Can't Be Empty - Please Try Again"
 						echo
 						unset "option2" "option3"
 						continue
@@ -3257,14 +3275,14 @@ Load_Menu() {
 					option2="ip"
 					Prompt_Typed "option3" "IP/Range" "Input IP Or Range To Whitelist:"
 					if ! echo "$option3" | Is_IPRange; then
-						echo "[*] $option3 Is Not A Valid IP/Range"
+						UI_Echo "[*] $option3 Is Not A Valid IP/Range"
 						echo
 						unset "option2" "option3"
 						continue
 					fi
 					Prompt_Typed "option4" "Comment" "Input Comment For Whitelist:"
 					if [ "${#option4}" -gt "242" ]; then
-						echo "[*] $option4 Is Not A Valid Comment. 242 Chars Max"
+						UI_Echo "[*] $option4 Is Not A Valid Comment. 242 Chars Max"
 						echo
 						unset "option2" "option3" "option4"
 						continue
@@ -3275,7 +3293,7 @@ Load_Menu() {
 					option2="domain"
 					Prompt_Typed "option3" "URL" "Input Domain To Whitelist:"
 					if [ -z "$option3" ]; then
-						echo "[*] URL Field Can't Be Empty - Please Try Again"
+						UI_Echo "[*] URL Field Can't Be Empty - Please Try Again"
 						echo
 						unset "option2" "option3"
 						continue
@@ -3286,7 +3304,7 @@ Load_Menu() {
 					option2="asn"
 					Prompt_Typed "option3" "ASN" "Input ASN To Whitelist:"
 					if ! echo "$option3" | Is_ASN; then
-						echo "[*] $option3 Is Not A Valid ASN"
+						UI_Echo "[*] $option3 Is Not A Valid ASN"
 						echo
 						unset "option2" "option3"
 						continue
@@ -3315,7 +3333,7 @@ Load_Menu() {
 							option3="entry"
 							Prompt_Typed "option4" "IP/Range" "Input IP Or Range To Remove:"
 							if ! echo "$option4" | Is_IPRange; then
-								echo "[*] $option4 Is Not A Valid IP/Range"
+								UI_Echo "[*] $option4 Is Not A Valid IP/Range"
 								echo
 								unset "option3" "option4"
 								continue
@@ -3326,13 +3344,13 @@ Load_Menu() {
 							option3="comment"
 							Prompt_Typed "option4" "Comment" "Remove Entries Based On Comment:"
 							if [ "${#option4}" -gt "255" ]; then
-								echo "[*] $option4 Is Not A Valid Comment. 255 Chars Max"
+								UI_Echo "[*] $option4 Is Not A Valid Comment. 255 Chars Max"
 								echo
 								unset "option3" "option4"
 								continue
 							fi
 							if [ -z "${option4}" ]; then
-								echo "[*] Comment Field Can't Be Empty - Please Try Again"
+								UI_Echo "[*] Comment Field Can't Be Empty - Please Try Again"
 								echo
 								unset "option3" "option4"
 								continue
@@ -3431,7 +3449,7 @@ Load_Menu() {
 			done
 			Prompt_Typed "option3" "File" "Input URL/Local File To Import:"
 			if [ -z "$option3" ]; then
-				echo "[*] File Field Can't Be Empty - Please Try Again"
+				UI_Echo "[*] File Field Can't Be Empty - Please Try Again"
 				echo
 				unset "option1" "option2" "option3"
 				continue
@@ -3467,7 +3485,7 @@ Load_Menu() {
 			done
 			Prompt_Typed "option3" "File" "Input URL/Local File To Deport"
 			if [ -z "$option3" ]; then
-				echo "[*] File Field Can't Be Empty - Please Try Again"
+				UI_Echo "[*] File Field Can't Be Empty - Please Try Again"
 				echo
 				unset "option1" "option2" "option3"
 				continue
@@ -3553,7 +3571,7 @@ Load_Menu() {
 				case "$menu2" in
 				1)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -3586,7 +3604,7 @@ Load_Menu() {
 					;;
 				2)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -3624,7 +3642,7 @@ Load_Menu() {
 					;;
 				3)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -3657,7 +3675,7 @@ Load_Menu() {
 					;;
 				4)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -3690,7 +3708,7 @@ Load_Menu() {
 					;;
 				5)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -3710,14 +3728,14 @@ Load_Menu() {
 							Prompt_Typed "option3" "Size" "Input Custom Log Size (in MB):"
 							if ! Is_Numeric "$option3"; then
 								echo
-								echo "[*] $option3 Is Not A Valid Size"
+								UI_Echo "[*] $option3 Is Not A Valid Size"
 								echo
 								unset "option3"
 								continue
 							fi
 							if [ "$option3" -lt 10 ]; then
 								echo
-								echo "[*] $option3 Is Not A Valid Size - Must Be At Least 10MB"
+								UI_Echo "[*] $option3 Is Not A Valid Size - Must Be At Least 10MB"
 								echo
 								unset "option3"
 								continue
@@ -3737,7 +3755,7 @@ Load_Menu() {
 					;;
 				6)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -3775,7 +3793,7 @@ Load_Menu() {
 					;;
 				7)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -3808,7 +3826,7 @@ Load_Menu() {
 					;;
 				8)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -3841,7 +3859,7 @@ Load_Menu() {
 					;;
 				9)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -3874,7 +3892,7 @@ Load_Menu() {
 					;;
 				10)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -3907,7 +3925,7 @@ Load_Menu() {
 					;;
 				11)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -3922,7 +3940,7 @@ Load_Menu() {
 						1)
 							Prompt_Typed "option2" "URL" "Input Custom Filter List URL:"
 							if [ -z "$option2" ]; then
-								echo "[*] URL Field Can't Be Empty - Please Try Again"
+								UI_Echo "[*] URL Field Can't Be Empty - Please Try Again"
 								echo
 								unset "option2"
 								continue
@@ -3946,7 +3964,7 @@ Load_Menu() {
 					;;
 				12)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -3973,7 +3991,7 @@ Load_Menu() {
 								2)
 									Prompt_Typed "option3" "File" "Input Custom Syslog Location:"
 									if [ -z "$option3" ]; then
-										echo "[*] File Field Can't Be Empty - Please Try Again"
+										UI_Echo "[*] File Field Can't Be Empty - Please Try Again"
 										echo
 										unset "option1" "option2" "option3"
 										continue
@@ -4008,7 +4026,7 @@ Load_Menu() {
 								2)
 									Prompt_Typed "option3" "File" "Input Custom Syslog-1 Location:"
 									if [ -z "$option3" ]; then
-										echo "[*] File Field Can't Be Empty - Please Try Again"
+										UI_Echo "[*] File Field Can't Be Empty - Please Try Again"
 										echo
 										unset "option1" "option2" "option3"
 										continue
@@ -4040,7 +4058,7 @@ Load_Menu() {
 					;;
 				13)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -4062,7 +4080,7 @@ Load_Menu() {
 							if echo "$option4" | grep -q ","; then
 								for ip in $(echo "$option4" | sed 's~,~ ~g'); do
 									if ! echo "$ip" | Is_IPRange; then
-										echo "[*] $ip Is Not A Valid IP/Range"
+										UI_Echo "[*] $ip Is Not A Valid IP/Range"
 										echo
 										unset "option3" "option4"
 										continue 2
@@ -4070,7 +4088,7 @@ Load_Menu() {
 								done
 							else
 								if ! echo "$option4" | Is_IPRange; then
-									echo "[*] $option4 Is Not A Valid IP/Range"
+									UI_Echo "[*] $option4 Is Not A Valid IP/Range"
 									echo
 									unset "option3" "option4"
 									continue
@@ -4084,7 +4102,7 @@ Load_Menu() {
 							if echo "$option4" | grep -q ","; then
 								for ip in $(echo "$option4" | sed 's~,~ ~g'); do
 									if ! echo "$ip" | Is_IPRange; then
-										echo "[*] $ip Is Not A Valid IP/Range"
+										UI_Echo "[*] $ip Is Not A Valid IP/Range"
 										echo
 										unset "option3" "option4"
 										continue 2
@@ -4092,7 +4110,7 @@ Load_Menu() {
 								done
 							else
 								if ! echo "$option4" | Is_IPRange; then
-									echo "[*] $option4 Is Not A Valid IP/Range"
+									UI_Echo "[*] $option4 Is Not A Valid IP/Range"
 									echo
 									unset "option3" "option4"
 									continue
@@ -4114,7 +4132,7 @@ Load_Menu() {
 							if echo "$option4" | grep -q ","; then
 								for port in $(echo "$option4" | sed 's~,~ ~g'); do
 									if ! echo "$port" | Is_Port; then
-										echo "[*] $port Is Not A Valid Port"
+										UI_Echo "[*] $port Is Not A Valid Port"
 										echo
 										unset "option3" "option4"
 										continue 2
@@ -4122,7 +4140,7 @@ Load_Menu() {
 								done
 							else
 								if ! echo "$option4" | Is_Port; then
-									echo "[*] $port Is Not A Valid Port"
+									UI_Echo "[*] $port Is Not A Valid Port"
 									echo
 									unset "option3" "option4"
 									continue
@@ -4181,7 +4199,7 @@ Load_Menu() {
 					;;
 				14)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -4214,7 +4232,7 @@ Load_Menu() {
 					;;
 				15)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -4247,7 +4265,7 @@ Load_Menu() {
 					;;
 				16)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -4280,7 +4298,7 @@ Load_Menu() {
 					;;
 				17)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -4313,7 +4331,7 @@ Load_Menu() {
 					;;
 				18)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -4350,7 +4368,7 @@ Load_Menu() {
 				case "$menu2" in
 				1)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -4370,7 +4388,7 @@ Load_Menu() {
 							option3="ip"
 							Prompt_Typed "option4" "IP"
 							if ! echo "$option4" | Is_IP; then
-								echo "[*] $option4 Is Not A Valid IP"
+								UI_Echo "[*] $option4 Is Not A Valid IP"
 								echo
 								unset "option3" "option4"
 								continue
@@ -4381,7 +4399,7 @@ Load_Menu() {
 							option3="port"
 							Prompt_Typed "option4" "Port"
 							if ! echo "$option4" | Is_Port || [ "$option4" -gt "65535" ]; then
-								echo "[*] $option4 Is Not A Valid Port"
+								UI_Echo "[*] $option4 Is Not A Valid Port"
 								echo
 								unset "option3" "option4"
 								continue
@@ -4437,7 +4455,7 @@ Load_Menu() {
 					;;
 				5)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -4446,7 +4464,7 @@ Load_Menu() {
 					;;
 				6)
 					if ! Check_IPSets || ! Check_IPTables; then
-						echo "[*] Skynet Not Running - Exiting"
+						UI_Echo "[*] Skynet Not Running - Exiting"
 						echo
 						exit 1
 					fi
@@ -4500,7 +4518,7 @@ Load_Menu() {
 						4)
 							Prompt_Input "Number" option3
 							if ! [ "$option3" -eq "$option3" ] 2>/dev/null; then
-								echo "[*] $option3 Isn't A Valid Number!"
+								UI_Echo "[*] $option3 Isn't A Valid Number!"
 								echo
 								unset option3
 								continue
@@ -4572,7 +4590,7 @@ Load_Menu() {
 							option3="port"
 							Prompt_Input "Port" option4
 							if ! echo "$option4" | Is_Port || [ "$option4" -gt 65535 ]; then
-								echo "[*] $option4 Is Not A Valid Port"
+								UI_Echo "[*] $option4 Is Not A Valid Port"
 								echo
 								unset option3 option4
 								continue
@@ -4583,7 +4601,7 @@ Load_Menu() {
 							option3="ip"
 							Prompt_Input "IP" option4
 							if ! echo "$option4" | Is_IP; then
-								echo "[*] $option4 Is Not A Valid IP"
+								UI_Echo "[*] $option4 Is Not A Valid IP"
 								echo
 								unset option3 option4
 								continue
@@ -4594,7 +4612,7 @@ Load_Menu() {
 							option3="domain"
 							Prompt_Input "Domain" option4
 							if [ -z "$option4" ]; then
-								echo "[*] Domain Field Can't Be Empty - Please Try Again"
+								UI_Echo "[*] Domain Field Can't Be Empty - Please Try Again"
 								echo
 								unset option3 option4
 								continue
@@ -4605,7 +4623,7 @@ Load_Menu() {
 							option3="malware"
 							Prompt_Input "IP" option4
 							if ! echo "$option4" | Is_IPRange; then
-								echo "[*] $option4 Is Not A Valid IP/Range"
+								UI_Echo "[*] $option4 Is Not A Valid IP/Range"
 								echo
 								unset option3 option4
 								continue
@@ -4620,7 +4638,7 @@ Load_Menu() {
 							option3="device"
 							Prompt_Input "Local IP" option4
 							if ! echo "$option4" | Is_IP; then
-								echo "[*] $option4 Is Not A Valid IP"
+								UI_Echo "[*] $option4 Is Not A Valid IP"
 								echo
 								unset option3 option4
 								continue
@@ -4654,7 +4672,7 @@ Load_Menu() {
 									option4="ip"
 									Prompt_Typed "option5" "IP"
 									if ! echo "$option5" | Is_IP; then
-										echo "[*] $option5 Is Not A Valid IP"
+										UI_Echo "[*] $option5 Is Not A Valid IP"
 										echo
 										unset "option4" "option5"
 										continue
@@ -4665,7 +4683,7 @@ Load_Menu() {
 									option4="port"
 									Prompt_Typed "option5" "Port"
 									if ! echo "$option5" | Is_Port || [ "$option5" -gt "65535" ]; then
-										echo "[*] $option5 Is Not A Valid Port"
+										UI_Echo "[*] $option5 Is Not A Valid Port"
 										echo
 										unset "option4" "option5"
 										continue
@@ -4676,7 +4694,7 @@ Load_Menu() {
 									option4="proto"
 									Prompt_Typed "option5" "Protocol"
 									if [ "$option5" != "tcp" ] && [ "$option5" != "udp" ] && [ "$option5" != "icmp" ]; then
-										echo "[*] $option5 Is Not A Valid Protocol"
+										UI_Echo "[*] $option5 Is Not A Valid Protocol"
 										echo
 										unset "option4" "option5"
 										continue
@@ -4749,7 +4767,7 @@ Load_Menu() {
 							4)
 								Prompt_Typed optionx "Number" "Enter Custom Amount:"
 								if ! [ "${optionx:?}" -eq "$optionx" ] 2>/dev/null; then
-									echo "[*] $optionx Isn't A Valid Number!"
+									UI_Echo "[*] $optionx Isn't A Valid Number!"
 									echo
 									unset "optionx"
 									continue
@@ -4788,7 +4806,7 @@ Load_Menu() {
 							read -r "option4"
 							echo
 							if ! echo "$option4" | Is_IP; then
-								echo "[*] $option4 Is Not A Valid IP"
+								UI_Echo "[*] $option4 Is Not A Valid IP"
 								echo
 								unset "option3" "option4"
 								continue
@@ -4801,7 +4819,7 @@ Load_Menu() {
 							read -r "option4"
 							echo
 							if ! echo "$option4" | Is_Port || [ "$option4" -gt "65535" ]; then
-								echo "[*] $option4 Is Not A Valid Port"
+								UI_Echo "[*] $option4 Is Not A Valid Port"
 								echo
 								unset "option3" "option4"
 								continue
@@ -4850,7 +4868,7 @@ Load_Menu() {
 			break
 			;;
 		e | exit)
-			echo "[*] Exiting!"
+			UI_Echo "[*] Exiting!"
 			echo
 			exit 0
 			;;
@@ -4920,7 +4938,7 @@ case "$1" in
 unban)
 	Check_Lock "$@"
 	if ! Check_IPSets || ! Check_IPTables; then
-		echo "[*] Skynet Not Running - Exiting"
+		UI_Echo "[*] Skynet Not Running - Exiting"
 		echo
 		exit 1
 	fi
@@ -4928,84 +4946,84 @@ unban)
 	case "$2" in
 	ip)
 		if ! echo "$3" | Is_IP; then
-			echo "[*] $3 Is Not A Valid IP"
+			UI_Echo "[*] $3 Is Not A Valid IP"
 			echo
 			exit 2
 		fi
-		echo "[i] Unbanning $3"
+		UI_Echo "[i] Unbanning $3"
 		IPSet_Wrapper del Skynet-Blacklist "$3" nofilter
 		sed -i "\\~\\(BLOCKED.*=$3 \\|Manual Ban.*=$3 \\)~d" "$skynetlog" "$skynetevents"
 		;;
 	range)
 		if ! echo "$3" | Is_Range; then
-			echo "[*] $3 Is Not A Valid Range"
+			UI_Echo "[*] $3 Is Not A Valid Range"
 			echo
 			exit 2
 		fi
-		echo "[i] Unbanning $3"
+		UI_Echo "[i] Unbanning $3"
 		IPSet_Wrapper del Skynet-BlockedRanges "$3" nofilter
 		sed -i "\\~\\(BLOCKED.*=$3 \\|Manual Ban.*=$3 \\)~d" "$skynetlog" "$skynetevents"
 		;;
 	domain)
 		if ! Check_Connection; then
-			echo "[*] Connection Error Detected - Exiting"
+			UI_Echo "[*] Connection Error Detected - Exiting"
 			echo
 			exit 1
 		fi
 		if [ -z "$3" ]; then
-			echo "[*] Domain Field Can't Be Empty - Please Try Again"
+			UI_Echo "[*] Domain Field Can't Be Empty - Please Try Again"
 			echo
 			exit 2
 		fi
 		domain="$(echo "$3" | Strip_Domain)"
-		echo "[i] Removing $domain From Blacklist"
+		UI_Echo "[i] Removing $domain From Blacklist"
 		for ip in $(Domain_Lookup "$domain" 3); do
-			echo "[i] Unbanning $ip"
+			UI_Echo "[i] Unbanning $ip"
 			IPSet_Wrapper del Skynet-Blacklist "$ip" nofilter
 			sed -i "\\~\\(BLOCKED.*=$ip \\|Manual Ban.*=$ip \\)~d" "$skynetlog" "$skynetevents"
 		done
 		;;
 	comment)
 		if [ -z "$3" ]; then
-			echo "[*] Comment Field Can't Be Empty - Please Try Again"
+			UI_Echo "[*] Comment Field Can't Be Empty - Please Try Again"
 			echo
 			exit 2
 		fi
-		echo "[i] Removing Bans With Comment Containing ($3)"
+		UI_Echo "[i] Removing Bans With Comment Containing ($3)"
 		sed "\\~add Skynet-Whitelist ~d;\\~$3~!d;s~ comment.*~~;s~add~del~g" "$skynetipset" | ipset restore -!
-		echo "[i] Removing Old Logs - This May Take Awhile (To Skip Type ctrl+c)"
-		trap 'echo;echo;echo "[*] Interrupted"; break' INT
+		UI_Echo "[i] Removing Old Logs - This May Take Awhile (To Skip Type ctrl+c)"
+		trap 'echo;echo;UI_Echo "[*] Interrupted"; break' INT
 		sed "\\~add Skynet-Whitelist ~d;\\~$3~!d;s~ comment.*~~" "$skynetipset" | cut -d' ' -f3 | while IFS= read -r "ip"; do
 			sed -i "\\~\\(BLOCKED.*=$ip \\|Manual Ban.*=$ip \\)~d" "$skynetlog" "$skynetevents"
 		done
 		trap 'Release_Lock' INT TERM EXIT
 		;;
 	country)
-		echo "[i] Removing Previous Country Bans (${countrylist})"
+		UI_Echo "[i] Removing Previous Country Bans (${countrylist})"
 		sed '\~add Skynet-Whitelist ~d;\~Country: ~!d;s~ comment.*~~;s~add~del~g' "$skynetipset" | ipset restore -!
 		unset "countrylist"
 		;;
 	asn)
 		if [ -z "$3" ]; then
-			echo "[*] ASN Field Can't Be Empty - Please Try Again"
+			UI_Echo "[*] ASN Field Can't Be Empty - Please Try Again"
 			echo
 			exit 2
 		fi
 		if ! echo "$3" | Is_ASN; then
-			echo "[*] $3 Is Not A Valid ASN"
+			UI_Echo "[*] $3 Is Not A Valid ASN"
 			echo
 			exit 2
 		fi
 		asnlist="$(echo "$3" | awk '{print toupper($0)}')"
-		echo "[i] Removing Previous $asnlist Bans"
+		UI_Echo "[i] Removing Previous $asnlist Bans"
 		sed "\~add Skynet-Whitelist ~d;\~$asnlist ~!d;s~ comment.*~~;s~add~del~g" "$skynetipset" | ipset restore -!
 		;;
 	malware)
-		echo "[i] Removing Previous Malware Blacklist Entries"
+		UI_Echo "[i] Removing Previous Malware Blacklist Entries"
 		sed '\~add Skynet-Whitelist ~d;\~BanMalware~!d;s~ comment.*~~;s~add~del~g' "$skynetipset" | ipset restore -!
 		;;
 	nomanual)
-		echo "[i] Removing All Non-Manual Bans"
+		UI_Echo "[i] Removing All Non-Manual Bans"
 		sed -i '\~Manual ~!d' "$skynetlog"
 		ipset flush Skynet-Blacklist
 		ipset flush Skynet-BlockedRanges
@@ -5013,7 +5031,7 @@ unban)
 		iptables -Z PREROUTING -t raw
 		;;
 	all)
-		echo "[i] Removing All $((blacklist1count + blacklist2count)) Entries From Blacklist"
+		UI_Echo "[i] Removing All $((blacklist1count + blacklist2count)) Entries From Blacklist"
 		ipset flush Skynet-Blacklist
 		ipset flush Skynet-BlockedRanges
 		iptables -Z PREROUTING -t raw
@@ -5025,19 +5043,19 @@ unban)
 		Command_Not_Recognized
 		;;
 	esac
-	echo "[i] Saving Changes"
+	UI_Echo "[i] Saving Changes"
 	Save_IPSets
 	;;
 
 ban)
 	Check_Lock "$@"
 	if ! Check_IPSets || ! Check_IPTables; then
-		echo "[*] Skynet Not Running - Exiting"
+		UI_Echo "[*] Skynet Not Running - Exiting"
 		echo
 		exit 1
 	fi
 	if ! Check_Connection; then
-		echo "[*] Connection Error Detected - Exiting"
+		UI_Echo "[*] Connection Error Detected - Exiting"
 		echo
 		exit 1
 	fi
@@ -5045,16 +5063,16 @@ ban)
 	case "$2" in
 	ip)
 		if ! echo "$3" | Is_IP; then
-			echo "[*] $3 Is Not A Valid IP"
+			UI_Echo "[*] $3 Is Not A Valid IP"
 			echo
 			exit 2
 		fi
 		if [ "${#4}" -gt "244" ]; then
-			echo "[*] $4 Is Not A Valid Comment. 244 Chars Max"
+			UI_Echo "[*] $4 Is Not A Valid Comment. 244 Chars Max"
 			echo
 			exit 2
 		fi
-		echo "[i] Banning $3"
+		UI_Echo "[i] Banning $3"
 		desc="$4"
 		if [ -z "$4" ]; then
 			desc="$(date +"%b %e %T")"
@@ -5064,16 +5082,16 @@ ban)
 		;;
 	range)
 		if ! echo "$3" | Is_Range; then
-			echo "[*] $3 Is Not A Valid Range"
+			UI_Echo "[*] $3 Is Not A Valid Range"
 			echo
 			exit 2
 		fi
 		if [ "${#4}" -gt "243" ]; then
-			echo "[*] $4 Is Not A Valid Comment. 243 Chars Max"
+			UI_Echo "[*] $4 Is Not A Valid Comment. 243 Chars Max"
 			echo
 			exit 2
 		fi
-		echo "[i] Banning $3"
+		UI_Echo "[i] Banning $3"
 		desc="$4"
 		if [ -z "$4" ]; then
 			desc="$(date +"%b %e %T")"
@@ -5083,14 +5101,14 @@ ban)
 		;;
 	domain)
 		if [ -z "$3" ]; then
-			echo "[*] Domain Field Can't Be Empty - Please Try Again"
+			UI_Echo "[*] Domain Field Can't Be Empty - Please Try Again"
 			echo
 			exit 2
 		fi
 		domain="$(echo "$3" | Strip_Domain)"
-		echo "[i] Adding $domain To Blacklist"
+		UI_Echo "[i] Adding $domain To Blacklist"
 		for ip in $(Domain_Lookup "$domain" 3 | Filter_PrivateIP); do
-			echo "[i] Banning $ip"
+			UI_Echo "[i] Banning $ip"
 			IPSet_Wrapper add Skynet-Blacklist "$ip" nofilter "ManualBanD: $domain"
 			echo "$(date +"%b %e %T") Skynet: [Manual Ban] TYPE=Domain SRC=$ip Host=$domain " >>"$skynetevents"
 		done
@@ -5098,7 +5116,7 @@ ban)
 	country)
 		# Require at least one argument after "country"
 		if [ -z "$3" ]; then
-			echo "[*] Country Field Can't Be Empty - Please Try Again"
+			UI_Echo "[*] Country Field Can't Be Empty - Please Try Again"
 			echo
 			exit 2
 		fi
@@ -5120,7 +5138,7 @@ ban)
 
 		# Disallow quotes in the combined country string
 		if printf '%s\n' "$country_raw" | grep -qF '"'; then
-			echo "[*] Country Field Can't Include Quotes - Please Try Again"
+			UI_Echo "[*] Country Field Can't Include Quotes - Please Try Again"
 			echo
 			exit 2
 		fi
@@ -5157,15 +5175,15 @@ ban)
 
 		# Remove any previous country bans (anything with "Country:" comment)
 		if [ -n "$countrylist" ]; then
-			echo "[i] Removing Previous Country Bans (${countrylist})"
+			UI_Echo "[i] Removing Previous Country Bans (${countrylist})"
 			sed '\~add Skynet-Whitelist ~d;\~Country: ~!d;s~ comment.*~~;s~add~del~g' "$skynetipset" | ipset restore -!
 		fi
 
 		# For logging / other uses, keep the filtered list as-is
 		countrylist="$countrylinklist"
 
-		echo "[i] Banning Known IP Ranges For (${countrylist})"
-		echo "[i] Downloading Lists, Filtering IPv4 Ranges & Applying Blacklists"
+		UI_Echo "[i] Banning Known IP Ranges For (${countrylist})"
+		UI_Echo "[i] Downloading Lists, Filtering IPv4 Ranges & Applying Blacklists"
 
 		for country in $countrylist; do
 			curl -fskL --retry 3 --connect-timeout 3 --max-time 6 --retry-delay 1 --retry-all-errors \
@@ -5177,47 +5195,47 @@ ban)
 		;;
 	asn)
 		if [ -z "$3" ]; then
-			echo "[*] ASN Field Can't Be Empty - Please Try Again"
+			UI_Echo "[*] ASN Field Can't Be Empty - Please Try Again"
 			echo
 			exit 2
 		fi
 		if ! echo "$3" | Is_ASN; then
-			echo "[*] $3 Is Not A Valid ASN"
+			UI_Echo "[*] $3 Is Not A Valid ASN"
 			echo
 			exit 2
 		fi
 		asnlist="$(echo "$3" | awk '{print toupper($0)}')"
-		echo "[i] Adding $asnlist To Blacklist"
+		UI_Echo "[i] Adding $asnlist To Blacklist"
 		curl -fsSL --retry 3 --max-time 6 "https://asn.ipinfo.app/api/text/list/$asnlist" | awk -v asn="$asnlist" '/^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-2]))?)([[:space:]]|$)/{printf "add Skynet-BlockedRanges %s comment \"ASN: %s \"\n", $1, asn }' | awk '!x[$0]++' | ipset restore -!
 		;;
 	*)
 		Command_Not_Recognized
 		;;
 	esac
-	echo "[i] Saving Changes"
+	UI_Echo "[i] Saving Changes"
 	Save_IPSets
 	;;
 
 banmalware | fs)
 	Check_Lock "$@"
 	if ! Check_IPSets || ! Check_IPTables; then
-		echo "[*] Skynet Not Running - Exiting"
+		UI_Echo "[*] Skynet Not Running - Exiting"
 		echo
 		exit 1
 	fi
 	if ! Check_Connection; then
-		echo "[*] Connection Error Detected - Exiting"
+		UI_Echo "[*] Connection Error Detected - Exiting"
 		echo
 		exit 1
 	fi
 	Purge_Logs
 	if [ "$2" = "disable" ] && [ "$fastswitch" = "disabled" ] && [ "$1" = "fs" ]; then
-		echo "[*] Fast Switch List Already Disabled - Stopping Banmalware"
+		UI_Echo "[*] Fast Switch List Already Disabled - Stopping Banmalware"
 		echo
 		exit 1
 	fi
 	if Is_Enabled "$fastswitch" && [ "$1" = "fs" ] && [ -z "$2" ] || [ "$2" = "disable" ]; then
-		echo "[i] Fast Switch List Disabled"
+		UI_Echo "[i] Fast Switch List Disabled"
 		fastswitch="disabled"
 		set "banmalware"
 	fi
@@ -5226,22 +5244,22 @@ banmalware | fs)
 	fi
 	if [ "$2" = "exclude" ]; then
 		if [ "$3" = "reset" ] || [ -z "$3" ]; then
-			echo "[i] Exclusion List Reset"
+			UI_Echo "[i] Exclusion List Reset"
 			unset "excludelists"
 		else
 			excludelists="$3"
 		fi
 		set "banmalware"
 	fi
-	if [ -n "$excludelists" ]; then echo "[i] Excluding Lists Matching The Words; $excludelists"; fi
+	if [ -n "$excludelists" ]; then UI_Echo "[i] Excluding Lists Matching The Words; $excludelists"; fi
 	if [ "$2" = "reset" ]; then
-		echo "[i] Filter URL Reset"
+		UI_Echo "[i] Filter URL Reset"
 		unset "customlisturl"
 	fi
 	if [ -n "$2" ] && [ "$2" != "reset" ] && [ "$1" != "fs" ]; then
 		customlisturl="$2"
 		listurl="$customlisturl"
-		echo "[i] Custom Filter Detected: $customlisturl"
+		UI_Echo "[i] Custom Filter Detected: $customlisturl"
 	elif [ "$1" = "fs" ]; then
 		if [ -z "$2" ] && [ -z "$customlist2url" ]; then
 			Log error -s "Fast Switch List URL Not Configured - Stopping Banmalware"
@@ -5249,25 +5267,25 @@ banmalware | fs)
 			exit 1
 		else
 			fastswitch="enabled"
-			echo "[i] Fast Switch List Enabled"
+			UI_Echo "[i] Fast Switch List Enabled"
 			if [ -z "$customlist2url" ] || [ -n "$2" ]; then
 				customlist2url="$2"
 				listurl="$customlist2url"
 			else
 				listurl="$customlist2url"
 			fi
-			echo "[i] Custom Filter Detected: $customlist2url"
+			UI_Echo "[i] Custom Filter Detected: $customlist2url"
 		fi
 	else
 		if [ -n "$customlisturl" ]; then
 			listurl="$customlisturl"
-			echo "[i] Custom Filter Detected: $customlisturl"
+			UI_Echo "[i] Custom Filter Detected: $customlisturl"
 		else
 			listurl="https://raw.githubusercontent.com/Adamm00/IPSet_ASUS/master/filter.list"
 		fi
 	fi
 	curl -fsSI "$listurl" >/dev/null || {
-		echo "[*] Stopping Banmalware"
+		UI_Echo "[*] Stopping Banmalware"
 		echo
 		exit 1
 	}
@@ -5342,7 +5360,7 @@ banmalware | fs)
 	valid_entries=0
 	while IFS=' ' read -r url list || [ -n "$url" ]; do
 		[ -n "$url" ] || continue
-		echo "[i] Streaming and loading: $list"
+		UI_Echo "[i] Streaming and loading: $list"
 
 		if curl -fsSL --retry 2 --connect-timeout 5 --max-time 15 "$url" | awk -v src="$list" '
 				{
@@ -5408,15 +5426,15 @@ banmalware | fs)
 	Display_Result
 	forcebanmalwareupdate="disabled"
 	echo
-	echo "[i] For Whitelisting Assistance -"
-	echo "[i] https://www.snbforums.com/threads/release-skynet-router-firewall-security-enhancements.16798/#post-115872"
+	UI_Echo "[i] For Whitelisting Assistance -"
+	UI_Echo "[i] https://www.snbforums.com/threads/release-skynet-router-firewall-security-enhancements.16798/#post-115872"
 	Clean_Temp
 	;;
 
 whitelist)
 	Check_Lock "$@"
 	if ! Check_IPSets || ! Check_IPTables; then
-		echo "[*] Skynet Not Running - Exiting"
+		UI_Echo "[*] Skynet Not Running - Exiting"
 		echo
 		exit 1
 	fi
@@ -5424,16 +5442,16 @@ whitelist)
 	case "$2" in
 	ip | range)
 		if ! echo "$3" | Is_IPRange; then
-			echo "[*] $3 Is Not A Valid IP/Range"
+			UI_Echo "[*] $3 Is Not A Valid IP/Range"
 			echo
 			exit 2
 		fi
 		if [ "${#4}" -gt "242" ]; then
-			echo "[*] $4 Is Not A Valid Comment. 242 Chars Max"
+			UI_Echo "[*] $4 Is Not A Valid Comment. 242 Chars Max"
 			echo
 			exit 2
 		fi
-		echo "[i] Whitelisting $3"
+		UI_Echo "[i] Whitelisting $3"
 		desc="$4"
 		if [ -z "$4" ]; then
 			desc="$(date +"%b %e %T")"
@@ -5445,19 +5463,19 @@ whitelist)
 		;;
 	domain)
 		if ! Check_Connection; then
-			echo "[*] Connection Error Detected - Exiting"
+			UI_Echo "[*] Connection Error Detected - Exiting"
 			echo
 			exit 1
 		fi
 		if [ -z "$3" ]; then
-			echo "[*] Domain Field Can't Be Empty - Please Try Again"
+			UI_Echo "[*] Domain Field Can't Be Empty - Please Try Again"
 			echo
 			exit 2
 		fi
 		domain="$(echo "$3" | Strip_Domain)"
-		echo "[i] Adding $domain To Whitelist"
+		UI_Echo "[i] Adding $domain To Whitelist"
 		for ip in $(Domain_Lookup "$domain" 3); do
-			echo "[i] Whitelisting $ip"
+			UI_Echo "[i] Whitelisting $ip"
 			IPSet_Wrapper add Skynet-Whitelist "$ip" nofilter "ManualWlistD: $domain"
 			sed -i "\\~=$ip ~d" "$skynetlog" "$skynetevents" && echo "$(date +"%b %e %T") Skynet: [Manual Whitelist] TYPE=Domain SRC=$ip Host=$domain " >>"$skynetevents"
 			ipset -q -D Skynet-Blacklist "$ip"
@@ -5465,46 +5483,46 @@ whitelist)
 		if [ "$?" = "1" ]; then echo "$domain" >>/jffs/addons/shared-whitelists/shared-Skynet2-whitelist; fi
 		;;
 	vpn)
-		echo "[i] Updating VPN Whitelist"
+		UI_Echo "[i] Updating VPN Whitelist"
 		Whitelist_VPN
 		;;
 	asn)
 		if [ -z "$3" ]; then
-			echo "[*] ASN Field Can't Be Empty - Please Try Again"
+			UI_Echo "[*] ASN Field Can't Be Empty - Please Try Again"
 			echo
 			exit 2
 		fi
 		if ! echo "$3" | Is_ASN; then
-			echo "[*] $3 Is Not A Valid ASN"
+			UI_Echo "[*] $3 Is Not A Valid ASN"
 			echo
 			exit 2
 		fi
 		asnlist="$(echo "$3" | awk '{print toupper($0)}')"
-		echo "[i] Adding $asnlist To Whitelist"
+		UI_Echo "[i] Adding $asnlist To Whitelist"
 		curl -fsSL --retry 3 --max-time 6 "https://asn.ipinfo.app/api/text/list/$asnlist" | awk -v asn="$asnlist" '/^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-2]))?)([[:space:]]|$)/{printf "add Skynet-Whitelist %s comment \"ASN: %s \"\n", $1, asn }' | awk '!x[$0]++' | ipset restore -!
 		;;
 	remove)
 		case "$3" in
 		entry)
 			if ! echo "$4" | Is_IPRange; then
-				echo "[*] $4 Is Not A Valid IP/Range"
+				UI_Echo "[*] $4 Is Not A Valid IP/Range"
 				echo
 				exit 2
 			fi
-			echo "[i] Removing $4 From Whitelist"
+			UI_Echo "[i] Removing $4 From Whitelist"
 			IPSet_Wrapper del Skynet-Whitelist "$4" nofilter
 			sed -i "\\~=$4 ~d" "$skynetlog" "$skynetevents"
 			;;
 		comment)
 			if [ -z "$4" ]; then
-				echo "[*] Comment Field Can't Be Empty - Please Try Again"
+				UI_Echo "[*] Comment Field Can't Be Empty - Please Try Again"
 				echo
 				exit 2
 			fi
-			echo "[i] Removing All Entries With Comment Matching \"$4\" From Whitelist"
+			UI_Echo "[i] Removing All Entries With Comment Matching \"$4\" From Whitelist"
 			sed "\\~add Skynet-Whitelist ~!d;\\~$4~!d;s~ comment.*~~;s~add~del~g" "$skynetipset" | ipset restore -!
-			echo "[i] Removing Old Logs - This May Take Awhile (To Skip Type ctrl+c)"
-			trap 'echo;echo;echo "[*] Interrupted"; break' INT
+			UI_Echo "[i] Removing Old Logs - This May Take Awhile (To Skip Type ctrl+c)"
+			trap 'echo;echo;UI_Echo "[*] Interrupted"; break' INT
 			sed "\\~add Skynet-Whitelist ~!d;\\~$4~!d" "$skynetipset" | cut -d' ' -f3 | while IFS= read -r "ip"; do
 				sed -i "\\~=$ip ~d" "$skynetlog" "$skynetevents"
 			done
@@ -5512,13 +5530,13 @@ whitelist)
 			;;
 		all)
 			if ! Check_Connection; then
-				echo "[*] Connection Error Detected - Exiting"
+				UI_Echo "[*] Connection Error Detected - Exiting"
 				echo
 				exit 1
 			fi
-			echo "[i] Flushing Whitelist"
+			UI_Echo "[i] Flushing Whitelist"
 			ipset flush Skynet-Whitelist
-			echo "[i] Adding Default Entries"
+			UI_Echo "[i] Adding Default Entries"
 			true >"$skynetipset"
 			sed -i '\~Manual Whitelist~d' "$skynetevents"
 			Whitelist_Extra
@@ -5533,11 +5551,11 @@ whitelist)
 		;;
 	refresh)
 		if ! Check_Connection; then
-			echo "[*] Connection Error Detected - Exiting"
+			UI_Echo "[*] Connection Error Detected - Exiting"
 			echo
 			exit 1
 		fi
-		echo "[i] Refreshing Shared Whitelist Files"
+		UI_Echo "[i] Refreshing Shared Whitelist Files"
 		Whitelist_Extra
 		Whitelist_CDN
 		Whitelist_VPN
@@ -5565,7 +5583,7 @@ whitelist)
 		Command_Not_Recognized
 		;;
 	esac
-	echo "[i] Saving Changes"
+	UI_Echo "[i] Saving Changes"
 	Save_IPSets
 	;;
 
@@ -5574,35 +5592,35 @@ import)
 	blacklist)
 		Check_Lock "$@"
 		if ! Check_IPSets || ! Check_IPTables; then
-			echo "[*] Skynet Not Running - Exiting"
+			UI_Echo "[*] Skynet Not Running - Exiting"
 			echo
 			exit 1
 		fi
 		if ! Check_Connection; then
-			echo "[*] Connection Error Detected - Exiting"
+			UI_Echo "[*] Connection Error Detected - Exiting"
 			echo
 			exit 1
 		fi
 		Purge_Logs
-		echo "[i] This Function Extracts All IPs And Adds Them ALL To Blacklist"
+		UI_Echo "[i] This Function Extracts All IPs And Adds Them ALL To Blacklist"
 		if [ -f "$3" ]; then
-			echo "[i] Local Custom List Detected: $3"
+			UI_Echo "[i] Local Custom List Detected: $3"
 			stream_cmd="cat \"$3\""
 		elif [ -n "$3" ]; then
-			echo "[i] Remote Custom List Detected: $3"
+			UI_Echo "[i] Remote Custom List Detected: $3"
 			if ! curl -fsSI "$3" >/dev/null; then
-				echo "[*] 404 Error Detected - Stopping Import"
+				UI_Echo "[*] 404 Error Detected - Stopping Import"
 				echo
 				exit 1
 			fi
 			stream_cmd="curl -fsSL --retry 3 --max-time 6 \"$3\""
 		else
-			echo "[*] URL/File Field Can't Be Empty - Please Try Again"
+			UI_Echo "[*] URL/File Field Can't Be Empty - Please Try Again"
 			echo
 			exit 2
 		fi
 
-		echo "[i] Processing List"
+		UI_Echo "[i] Processing List"
 		if [ -n "$4" ] && [ "${#4}" -le "245" ]; then
 			desc="Imported: $4"
 		else
@@ -5621,46 +5639,46 @@ import)
 			}
 			END { if (valid == 0) exit 1 }
 		' | ipset restore -! || {
-			echo "[*] No Content Detected - Stopping Import"
+			UI_Echo "[*] No Content Detected - Stopping Import"
 			echo
 			exit 1
 		}
 
-		echo "[i] Saving Changes"
+		UI_Echo "[i] Saving Changes"
 		Save_IPSets
 		;;
 	whitelist)
 		Check_Lock "$@"
 		if ! Check_IPSets || ! Check_IPTables; then
-			echo "[*] Skynet Not Running - Exiting"
+			UI_Echo "[*] Skynet Not Running - Exiting"
 			echo
 			exit 1
 		fi
 		if ! Check_Connection; then
-			echo "[*] Connection Error Detected - Exiting"
+			UI_Echo "[*] Connection Error Detected - Exiting"
 			echo
 			exit 1
 		fi
 		Purge_Logs
-		echo "[i] This Function Extracts All IPs And Adds Them ALL To Whitelist"
+		UI_Echo "[i] This Function Extracts All IPs And Adds Them ALL To Whitelist"
 		if [ -f "$3" ]; then
-			echo "[i] Local Custom List Detected: $3"
+			UI_Echo "[i] Local Custom List Detected: $3"
 			stream_cmd="cat \"$3\""
 		elif [ -n "$3" ]; then
-			echo "[i] Remote Custom List Detected: $3"
+			UI_Echo "[i] Remote Custom List Detected: $3"
 			if ! curl -fsSI "$3" >/dev/null; then
-				echo "[*] 404 Error Detected - Stopping Import"
+				UI_Echo "[*] 404 Error Detected - Stopping Import"
 				echo
 				exit 1
 			fi
 			stream_cmd="curl -fsSL --retry 3 --max-time 6 \"$3\""
 		else
-			echo "[*] URL/File Field Can't Be Empty - Please Try Again"
+			UI_Echo "[*] URL/File Field Can't Be Empty - Please Try Again"
 			echo
 			exit 2
 		fi
 
-		echo "[i] Processing List"
+		UI_Echo "[i] Processing List"
 		if [ -n "$4" ] && [ "${#4}" -le "245" ]; then
 			desc="Imported: $4"
 		else
@@ -5675,13 +5693,13 @@ import)
 			}
 			END { if (valid == 0) exit 1 }
 		' | ipset restore -! || {
-			echo "[*] No Content Detected - Stopping Import"
+			UI_Echo "[*] No Content Detected - Stopping Import"
 			echo
 			exit 1
 		}
 
-		echo "[i] Adding IPs To Whitelist"
-		echo "[i] Saving Changes"
+		UI_Echo "[i] Adding IPs To Whitelist"
+		UI_Echo "[i] Saving Changes"
 		Save_IPSets
 		;;
 	*)
@@ -5695,35 +5713,35 @@ deport)
 	blacklist)
 		Check_Lock "$@"
 		if ! Check_IPSets || ! Check_IPTables; then
-			echo "[*] Skynet Not Running - Exiting"
+			UI_Echo "[*] Skynet Not Running - Exiting"
 			echo
 			exit 1
 		fi
 		if ! Check_Connection; then
-			echo "[*] Connection Error Detected - Exiting"
+			UI_Echo "[*] Connection Error Detected - Exiting"
 			echo
 			exit 1
 		fi
 		Purge_Logs
-		echo "[i] This Function Extracts All IPs And Removes Them ALL From Blacklist"
+		UI_Echo "[i] This Function Extracts All IPs And Removes Them ALL From Blacklist"
 		if [ -f "$3" ]; then
-			echo "[i] Local Custom List Detected: $3"
+			UI_Echo "[i] Local Custom List Detected: $3"
 			stream_cmd="cat \"$3\""
 		elif [ -n "$3" ]; then
-			echo "[i] Remote Custom List Detected: $3"
+			UI_Echo "[i] Remote Custom List Detected: $3"
 			if ! curl -fsSI "$3" >/dev/null; then
-				echo "[*] 404 Error Detected - Stopping Import"
+				UI_Echo "[*] 404 Error Detected - Stopping Import"
 				echo
 				exit 1
 			fi
 			stream_cmd="curl -fsSL --retry 3 --max-time 6 \"$3\""
 		else
-			echo "[*] URL/File Field Can't Be Empty - Please Try Again"
+			UI_Echo "[*] URL/File Field Can't Be Empty - Please Try Again"
 			echo
 			exit 2
 		fi
 
-		echo "[i] Processing List"
+		UI_Echo "[i] Processing List"
 
 		# Zero-Storage Direct Streaming Pipeline
 		eval "$stream_cmd" | dos2unix | grep -E '^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-2]))?)$' | Filter_PrivateIP | awk '
@@ -5737,58 +5755,58 @@ deport)
 			}
 			END { if (valid == 0) exit 1 }
 		' | ipset restore -! || {
-			echo "[*] No Content Detected - Stopping Deport"
+			UI_Echo "[*] No Content Detected - Stopping Deport"
 			echo
 			exit 1
 		}
 
-		echo "[i] Removing IPs From Blacklist"
-		echo "[i] Saving Changes"
+		UI_Echo "[i] Removing IPs From Blacklist"
+		UI_Echo "[i] Saving Changes"
 		Save_IPSets
 		;;
 	whitelist)
 		Check_Lock "$@"
 		if ! Check_IPSets || ! Check_IPTables; then
-			echo "[*] Skynet Not Running - Exiting"
+			UI_Echo "[*] Skynet Not Running - Exiting"
 			echo
 			exit 1
 		fi
 		if ! Check_Connection; then
-			echo "[*] Connection Error Detected - Exiting"
+			UI_Echo "[*] Connection Error Detected - Exiting"
 			echo
 			exit 1
 		fi
 		Purge_Logs
-		echo "[i] This Function Extracts All IPs And Removes Them ALL From Whitelist"
+		UI_Echo "[i] This Function Extracts All IPs And Removes Them ALL From Whitelist"
 		if [ -f "$3" ]; then
-			echo "[i] Local Custom List Detected: $3"
+			UI_Echo "[i] Local Custom List Detected: $3"
 			grep -E '^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-2]))?)$' "$3" >/tmp/skynet/iplist-unfiltered.txt
 		elif [ -n "$3" ]; then
-			echo "[i] Remote Custom List Detected: $3"
+			UI_Echo "[i] Remote Custom List Detected: $3"
 			curl -fsSL --retry 3 --max-time 6 "$3" | dos2unix | grep -E '^(((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])\.){3}(25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\/(1?[0-9]|2?[0-9]|3?[0-2]))?)$' >/tmp/skynet/iplist-unfiltered.txt || {
-				echo "[*] 404 Error Detected - Stopping Import"
+				UI_Echo "[*] 404 Error Detected - Stopping Import"
 				rm -rf /tmp/skynet/iplist-unfiltered.txt
 				echo
 				exit 1
 			}
 		else
-			echo "[*] URL/File Field Can't Be Empty - Please Try Again"
+			UI_Echo "[*] URL/File Field Can't Be Empty - Please Try Again"
 			echo
 			exit 2
 		fi
 		dos2unix /tmp/skynet/iplist-unfiltered.txt
 		if ! Is_IPRange </tmp/skynet/iplist-unfiltered.txt; then
-			echo "[*] No Content Detected - Stopping Deport"
+			UI_Echo "[*] No Content Detected - Stopping Deport"
 			rm -rf /tmp/skynet/iplist-unfiltered.txt
 			echo
 			exit 1
 		fi
-		echo "[i] Processing IPv4 Addresses"
+		UI_Echo "[i] Processing IPv4 Addresses"
 		Filter_PrivateIP </tmp/skynet/iplist-unfiltered.txt | awk '{printf "del Skynet-Whitelist %s\n", $1}' >/tmp/skynet/iplist-filtered.txt
-		echo "[i] Removing IPs From Whitelist"
+		UI_Echo "[i] Removing IPs From Whitelist"
 		ipset restore -! -f "/tmp/skynet/iplist-filtered.txt"
 		rm -rf /tmp/skynet/iplist-unfiltered.txt /tmp/skynet/iplist-filtered.txt
-		echo "[i] Saving Changes"
+		UI_Echo "[i] Saving Changes"
 		Save_IPSets
 		;;
 	*)
@@ -5807,7 +5825,7 @@ save)
 	else
 		Unban_PrivateIP
 		Purge_Logs
-		echo "[i] Saving Changes"
+		UI_Echo "[i] Saving Changes"
 		Save_IPSets
 		Check_Security
 	fi
@@ -5856,7 +5874,7 @@ start)
 	Refresh_MBans
 	Refresh_AiProtect
 	Check_Security
-	echo "[i] Saving Changes"
+	UI_Echo "[i] Saving Changes"
 	Save_IPSets
 	Generate_Stats
 	Install_WebUI_Page
@@ -5885,9 +5903,9 @@ start)
 restart)
 	Check_Lock "$@"
 	Purge_Logs
-	echo "[i] Saving Changes"
+	UI_Echo "[i] Saving Changes"
 	Save_IPSets
-	echo "[i] Unloading Skynet Components"
+	UI_Echo "[i] Unloading Skynet Components"
 	Unload_Cron "all"
 	Unload_IPTables
 	Unload_IOTTables
@@ -5902,9 +5920,9 @@ restart)
 
 disable)
 	Check_Lock "$@"
-	echo "[i] Saving Changes"
+	UI_Echo "[i] Saving Changes"
 	Save_IPSets
-	echo "[i] Unloading Skynet Components"
+	UI_Echo "[i] Unloading Skynet Components"
 	Unload_Cron "all"
 	Unload_IPTables
 	Unload_IOTTables
@@ -5919,19 +5937,19 @@ disable)
 --development)
 	Check_Lock "$@"
 	if ! Check_Connection; then
-		echo "[*] Connection Error Detected - Exiting"
+		UI_Echo "[*] Connection Error Detected - Exiting"
 		echo
 		exit 1
 	fi
 	if Filter_Version <"$0" | grep -q -e "-dev"; then
-		echo "[*] Already on development branch - Exiting"
+		UI_Echo "[*] Already on development branch - Exiting"
 		echo
 		exit 0
 	fi
 	Log info "Switching to development branch"
-	echo "[i] Saving Changes"
+	UI_Echo "[i] Saving Changes"
 	Save_IPSets
-	echo "[i] Unloading Skynet Components"
+	UI_Echo "[i] Unloading Skynet Components"
 	Unload_Cron "all"
 	Unload_IPTables
 	Unload_IOTTables
@@ -5956,19 +5974,19 @@ disable)
 --master)
 	Check_Lock "$@"
 	if ! Check_Connection; then
-		echo "[*] Connection Error Detected - Exiting"
+		UI_Echo "[*] Connection Error Detected - Exiting"
 		echo
 		exit 1
 	fi
 	if ! Filter_Version <"$0" | grep -q -e "-dev"; then
-		echo "[*] Already on master branch - Exiting"
+		UI_Echo "[*] Already on master branch - Exiting"
 		echo
 		exit 0
 	fi
 	Log info "Switching to master branch"
-	echo "[i] Saving Changes"
+	UI_Echo "[i] Saving Changes"
 	Save_IPSets
-	echo "[i] Unloading Skynet Components"
+	UI_Echo "[i] Unloading Skynet Components"
 	Unload_Cron "all"
 	Unload_IPTables
 	Unload_IOTTables
@@ -5993,7 +6011,7 @@ disable)
 update | amtmupdate)
 	Check_Lock "$@"
 	if ! Check_Connection; then
-		echo "[*] Connection Error Detected - Exiting"
+		UI_Echo "[*] Connection Error Detected - Exiting"
 		echo
 		exit 1
 	fi
@@ -6016,13 +6034,13 @@ update | amtmupdate)
 		Log info "Skynet Update Detected - $remotever (${remotemd5})"
 		nolog="2"
 	elif [ "$2" = "-f" ]; then
-		echo "[i] Forcing Update"
+		UI_Echo "[i] Forcing Update"
 	fi
 	if [ "$localmd5" != "$remotemd5" ] || [ "$2" = "-f" ] && [ "$nolog" != "2" ]; then
 		Log info "New Version Detected - Updating To $remotever (${remotemd5})"
-		echo "[i] Saving Changes"
+		UI_Echo "[i] Saving Changes"
 		Save_IPSets
-		echo "[i] Unloading Skynet Components"
+		UI_Echo "[i] Unloading Skynet Components"
 		Unload_Cron "all"
 		Unload_IPTables
 		Unload_IOTTables
@@ -6052,7 +6070,7 @@ settings)
 		enable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
@@ -6060,12 +6078,12 @@ settings)
 			autoupdate="enabled"
 			Unload_Cron "checkupdate"
 			Load_Cron "autoupdate"
-			echo "[i] Skynet Auto-Updates Enabled"
+			UI_Echo "[i] Skynet Auto-Updates Enabled"
 			;;
 		disable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
@@ -6073,7 +6091,7 @@ settings)
 			autoupdate="disabled"
 			Unload_Cron "autoupdate"
 			Load_Cron "checkupdate"
-			echo "[i] Skynet Auto-Updates Disabled"
+			UI_Echo "[i] Skynet Auto-Updates Disabled"
 			;;
 		*)
 			Command_Not_Recognized
@@ -6085,7 +6103,7 @@ settings)
 		daily)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
@@ -6094,12 +6112,12 @@ settings)
 			forcebanmalwareupdate="enabled"
 			Unload_Cron "banmalware"
 			Load_Cron "banmalwaredaily"
-			echo "[i] Daily Malware Blacklist Updates Enabled"
+			UI_Echo "[i] Daily Malware Blacklist Updates Enabled"
 			;;
 		weekly)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
@@ -6108,19 +6126,19 @@ settings)
 			forcebanmalwareupdate="enabled"
 			Unload_Cron "banmalware"
 			Load_Cron "banmalwareweekly"
-			echo "[i] Weekly Malware Blacklist Updates Enabled"
+			UI_Echo "[i] Weekly Malware Blacklist Updates Enabled"
 			;;
 		disable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			Purge_Logs
 			banmalwareupdate="disabled"
 			Unload_Cron "banmalware"
-			echo "[i] Malware Blacklist Updates Disabled"
+			UI_Echo "[i] Malware Blacklist Updates Disabled"
 			;;
 		*)
 			Command_Not_Recognized
@@ -6132,7 +6150,7 @@ settings)
 		enable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
@@ -6140,19 +6158,19 @@ settings)
 			logmode="enabled"
 			Unload_LogIPTables
 			Load_LogIPTables
-			echo "[i] Logging Enabled"
+			UI_Echo "[i] Logging Enabled"
 			;;
 		disable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			Purge_Logs
 			logmode="disabled"
 			Unload_LogIPTables
-			echo "[i] Logging Disabled"
+			UI_Echo "[i] Logging Disabled"
 			;;
 		*)
 			Command_Not_Recognized
@@ -6164,7 +6182,7 @@ settings)
 		enable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
@@ -6172,12 +6190,12 @@ settings)
 			loginvalid="enabled"
 			Unload_LogIPTables
 			Load_LogIPTables
-			echo "[i] Invalid IP Logging Enabled"
+			UI_Echo "[i] Invalid IP Logging Enabled"
 			;;
 		disable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
@@ -6185,7 +6203,7 @@ settings)
 			loginvalid="disabled"
 			Unload_LogIPTables
 			Load_LogIPTables
-			echo "[i] Invalid IP Logging Disabled"
+			UI_Echo "[i] Invalid IP Logging Disabled"
 			;;
 		*)
 			Command_Not_Recognized
@@ -6197,31 +6215,31 @@ settings)
 		10)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			logsize="10"
 			Purge_Logs
-			echo "[i] Log Size Set To 10MB"
+			UI_Echo "[i] Log Size Set To 10MB"
 			;;
 		*)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			if Is_Numeric "$3"; then
 				if [ "$3" -lt 10 ]; then
-					echo "[*] $3 Is Not A Valid Size - Must Be At Least 10MB"
+					UI_Echo "[*] $3 Is Not A Valid Size - Must Be At Least 10MB"
 				else
 					logsize="$3"
 					Purge_Logs
-					echo "[i] Log Size Set To ${logsize}MB"
+					UI_Echo "[i] Log Size Set To ${logsize}MB"
 				fi
 			else
-				echo "[*] $3 Is Not A Valid Size - Must Be Numeric"
+				UI_Echo "[*] $3 Is Not A Valid Size - Must Be Numeric"
 				Command_Not_Recognized
 			fi
 			;;
@@ -6232,7 +6250,7 @@ settings)
 		all)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
@@ -6244,13 +6262,13 @@ settings)
 			Load_IPTables
 			Load_IOTTables
 			Load_LogIPTables
-			echo "[i] Inbound & Outbound Filtering Enabled"
+			UI_Echo "[i] Inbound & Outbound Filtering Enabled"
 
 			;;
 		inbound)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
@@ -6262,12 +6280,12 @@ settings)
 			Load_IPTables
 			Load_IOTTables
 			Load_LogIPTables
-			echo "[i] Inbound Filtering Enabled"
+			UI_Echo "[i] Inbound Filtering Enabled"
 			;;
 		outbound)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
@@ -6279,7 +6297,7 @@ settings)
 			Load_IPTables
 			Load_IOTTables
 			Load_LogIPTables
-			echo "[i] Outbound Filtering Enabled"
+			UI_Echo "[i] Outbound Filtering Enabled"
 			;;
 		*)
 			Command_Not_Recognized
@@ -6291,25 +6309,25 @@ settings)
 		enable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			Purge_Logs
 			unbanprivateip="enabled"
-			echo "[i] Unban Private IP Enabled"
+			UI_Echo "[i] Unban Private IP Enabled"
 
 			;;
 		disable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			Purge_Logs
 			unbanprivateip="disabled"
-			echo "[i] Unban Private IP Disabled"
+			UI_Echo "[i] Unban Private IP Disabled"
 			;;
 		*)
 			Command_Not_Recognized
@@ -6321,37 +6339,37 @@ settings)
 		enable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			if ! Check_Connection; then
-				echo "[*] Connection Error Detected - Exiting"
+				UI_Echo "[*] Connection Error Detected - Exiting"
 				echo
 				exit 1
 			fi
 			Purge_Logs
 			banaiprotect="enabled"
 			Refresh_AiProtect
-			echo "[i] Import AiProtect Data Enabled"
+			UI_Echo "[i] Import AiProtect Data Enabled"
 			;;
 		disable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			Purge_Logs
 			banaiprotect="disabled"
 			sed '\~add Skynet-Blacklist ~!d;\~BanAiProtect~!d;s~ comment.*~~;s~add~del~g' "$skynetipset" | ipset restore -!
-			echo "[i] Import AiProtect Data Disabled"
+			UI_Echo "[i] Import AiProtect Data Disabled"
 			;;
 		*)
 			Command_Not_Recognized
 			;;
 		esac
-		echo "[i] Saving Changes"
+		UI_Echo "[i] Saving Changes"
 		Save_IPSets
 		;;
 	securemode)
@@ -6359,25 +6377,25 @@ settings)
 		enable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			Purge_Logs
 			securemode="enabled"
 			Check_Security
-			echo "[i] Secure Mode Enabled"
+			UI_Echo "[i] Secure Mode Enabled"
 			;;
 		disable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			Purge_Logs
 			securemode="disabled"
-			echo "[i] Secure Mode Disabled"
+			UI_Echo "[i] Secure Mode Disabled"
 			;;
 		*)
 			Command_Not_Recognized
@@ -6389,25 +6407,25 @@ settings)
 		enable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			Purge_Logs
 			extendedstats="enabled"
 			Check_Security
-			echo "[i] Extended Stats Enabled"
+			UI_Echo "[i] Extended Stats Enabled"
 			;;
 		disable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			Purge_Logs
 			extendedstats="disabled"
-			echo "[i] Extended Stats Disabled"
+			UI_Echo "[i] Extended Stats Disabled"
 			;;
 		*)
 			Command_Not_Recognized
@@ -6417,12 +6435,12 @@ settings)
 	syslog)
 		Check_Lock "$@"
 		if ! Check_IPSets || ! Check_IPTables; then
-			echo "[*] Skynet Not Running - Exiting"
+			UI_Echo "[*] Skynet Not Running - Exiting"
 			echo
 			exit 1
 		fi
 		if [ -z "$3" ]; then
-			echo "[*] Sysloc Location Not Specified - Exiting"
+			UI_Echo "[*] Sysloc Location Not Specified - Exiting"
 			echo
 			exit 1
 		fi
@@ -6434,17 +6452,17 @@ settings)
 			syslogloc="$3"
 			;;
 		esac
-		echo "[i] Syslog Location Set To $syslogloc"
+		UI_Echo "[i] Syslog Location Set To $syslogloc"
 		;;
 	syslog1)
 		Check_Lock "$@"
 		if ! Check_IPSets || ! Check_IPTables; then
-			echo "[*] Skynet Not Running - Exiting"
+			UI_Echo "[*] Skynet Not Running - Exiting"
 			echo
 			exit 1
 		fi
 		if [ -z "$3" ]; then
-			echo "[*] Syslog-1 Location Not Specified - Exiting"
+			UI_Echo "[*] Syslog-1 Location Not Specified - Exiting"
 			echo
 			exit 1
 		fi
@@ -6456,24 +6474,24 @@ settings)
 			syslog1loc="$3"
 			;;
 		esac
-		echo "[i] Syslog-1 Location Set To $syslog1loc"
+		UI_Echo "[i] Syslog-1 Location Set To $syslog1loc"
 		;;
 	iot)
 		Check_Lock "$@"
 		if ! Check_IPSets || ! Check_IPTables; then
-			echo "[*] Skynet Not Running - Exiting"
+			UI_Echo "[*] Skynet Not Running - Exiting"
 			echo
 			exit 1
 		fi
 		if [ -z "$3" ]; then
-			echo "[*] Option Not Specified - Exiting"
+			UI_Echo "[*] Option Not Specified - Exiting"
 			echo
 			exit 1
 		fi
 		case "$3" in
 		unban)
 			if [ -z "$4" ]; then
-				echo "[*] Device(s) Not Specified - Exiting"
+				UI_Echo "[*] Device(s) Not Specified - Exiting"
 				echo
 				exit 1
 			fi
@@ -6481,7 +6499,7 @@ settings)
 			if echo "$4" | grep -q ","; then
 				for ip in $(echo "$4" | sed 's~,~ ~g'); do
 					if ! echo "$ip" | Is_IPRange; then
-						echo "[*] $ip Is Not A Valid IP/Range"
+						UI_Echo "[*] $ip Is Not A Valid IP/Range"
 						echo
 					else
 						IPSet_Wrapper del Skynet-IOT "$ip" nofilter
@@ -6489,7 +6507,7 @@ settings)
 				done
 			else
 				if ! echo "$4" | Is_IPRange; then
-					echo "[*] $4 Is Not A Valid IP/Range"
+					UI_Echo "[*] $4 Is Not A Valid IP/Range"
 					echo
 				else
 					IPSet_Wrapper del Skynet-IOT "$4" nofilter
@@ -6512,7 +6530,7 @@ settings)
 			;;
 		ban)
 			if [ -z "$4" ]; then
-				echo "[*] Device(s) Not Specified - Exiting"
+				UI_Echo "[*] Device(s) Not Specified - Exiting"
 				echo
 				exit 1
 			fi
@@ -6521,7 +6539,7 @@ settings)
 			if echo "$4" | grep -q ","; then
 				for ip in $(echo "$4" | sed 's~,~ ~g'); do
 					if ! echo "$ip" | Is_IPRange; then
-						echo "[*] $ip Is Not A Valid IP/Range"
+						UI_Echo "[*] $ip Is Not A Valid IP/Range"
 						echo
 					else
 						IPSet_Wrapper add Skynet-IOT "$ip" nofilter "IOTBan: $desc"
@@ -6529,7 +6547,7 @@ settings)
 				done
 			else
 				if ! echo "$4" | Is_IPRange; then
-					echo "[*] $4 Is Not A Valid IP/Range"
+					UI_Echo "[*] $4 Is Not A Valid IP/Range"
 					echo
 				else
 					IPSet_Wrapper add Skynet-IOT "$4" nofilter "IOTBan: $desc"
@@ -6578,7 +6596,7 @@ settings)
 			;;
 		ports)
 			if [ -z "$4" ]; then
-				echo "[*] Ports(s) Not Specified - Exiting"
+				UI_Echo "[*] Ports(s) Not Specified - Exiting"
 				echo
 				exit 1
 			fi
@@ -6586,14 +6604,14 @@ settings)
 				if echo "$4" | grep -q ","; then
 					for port in $(echo "$4" | sed 's~,~ ~g'); do
 						if ! echo "$port" | Is_Port; then
-							echo "[*] $port Is Not A Valid Port - Exiting"
+							UI_Echo "[*] $port Is Not A Valid Port - Exiting"
 							echo
 							exit 1
 						fi
 					done
 				else
 					if ! echo "$4" | Is_Port; then
-						echo "[*] $4 Is Not A Valid Port"
+						UI_Echo "[*] $4 Is Not A Valid Port"
 						echo
 						exit 1
 					fi
@@ -6611,7 +6629,7 @@ settings)
 			;;
 		proto)
 			if [ -z "$4" ]; then
-				echo "[*] Proto Not Specified - Exiting"
+				UI_Echo "[*] Proto Not Specified - Exiting"
 				echo
 				exit 1
 			fi
@@ -6619,7 +6637,7 @@ settings)
 			udp)
 				Check_Lock "$@"
 				if ! Check_IPSets || ! Check_IPTables; then
-					echo "[*] Skynet Not Running - Exiting"
+					UI_Echo "[*] Skynet Not Running - Exiting"
 					echo
 					exit 1
 				fi
@@ -6627,12 +6645,12 @@ settings)
 				Unload_IOTTables
 				iotproto="udp"
 				Load_IOTTables
-				echo "[i] Allowing UDP Proto"
+				UI_Echo "[i] Allowing UDP Proto"
 				;;
 			tcp)
 				Check_Lock "$@"
 				if ! Check_IPSets || ! Check_IPTables; then
-					echo "[*] Skynet Not Running - Exiting"
+					UI_Echo "[*] Skynet Not Running - Exiting"
 					echo
 					exit 1
 				fi
@@ -6640,12 +6658,12 @@ settings)
 				Unload_IOTTables
 				iotproto="tcp"
 				Load_IOTTables
-				echo "[i] Allowing TCP Proto"
+				UI_Echo "[i] Allowing TCP Proto"
 				;;
 			all)
 				Check_Lock "$@"
 				if ! Check_IPSets || ! Check_IPTables; then
-					echo "[*] Skynet Not Running - Exiting"
+					UI_Echo "[*] Skynet Not Running - Exiting"
 					echo
 					exit 1
 				fi
@@ -6653,7 +6671,7 @@ settings)
 				Unload_IOTTables
 				iotproto="all"
 				Load_IOTTables
-				echo "[i] Allowing UDP & TCP Proto"
+				UI_Echo "[i] Allowing UDP & TCP Proto"
 				;;
 			*)
 				Command_Not_Recognized
@@ -6666,11 +6684,11 @@ settings)
 		esac
 		if [ "$3" != "view" ]; then
 			if Is_Enabled "$iotblocked"; then
-				echo "[i] IOT Blocking List Updated"
+				UI_Echo "[i] IOT Blocking List Updated"
 			else
-				echo "[i] IOT Blocking List Cleared"
+				UI_Echo "[i] IOT Blocking List Cleared"
 			fi
-			echo "[i] Saving Changes"
+			UI_Echo "[i] Saving Changes"
 			Save_IPSets
 		fi
 		;;
@@ -6679,7 +6697,7 @@ settings)
 		enable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
@@ -6687,12 +6705,12 @@ settings)
 			iotlogging="enabled"
 			Unload_LogIPTables
 			Load_LogIPTables
-			echo "[i] IOT Logging For Protected Devices Enabled"
+			UI_Echo "[i] IOT Logging For Protected Devices Enabled"
 			;;
 		disable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
@@ -6700,7 +6718,7 @@ settings)
 			iotlogging="disabled"
 			Unload_LogIPTables
 			Load_LogIPTables
-			echo "[i] IOT Logging For Protected Devices Disabled"
+			UI_Echo "[i] IOT Logging For Protected Devices Disabled"
 			;;
 		*)
 			Command_Not_Recognized
@@ -6712,24 +6730,24 @@ settings)
 		enable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			Purge_Logs
 			lookupcountry="enabled"
-			echo "[i] Country Lookups For Stat Data Enabled"
+			UI_Echo "[i] Country Lookups For Stat Data Enabled"
 			;;
 		disable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			Purge_Logs
 			lookupcountry="disabled"
-			echo "[i] Country Lookups For Stat Data Disabled"
+			UI_Echo "[i] Country Lookups For Stat Data Disabled"
 			;;
 		*)
 			Command_Not_Recognized
@@ -6741,26 +6759,26 @@ settings)
 		enable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			Purge_Logs
 			cdnwhitelist="enabled"
 			Whitelist_CDN
-			echo "[i] CDN Whitelisting Enabled"
+			UI_Echo "[i] CDN Whitelisting Enabled"
 			;;
 		disable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			Purge_Logs
 			cdnwhitelist="disabled"
 			Whitelist_CDN
-			echo "[i] CDN Whitelisting Disabled"
+			UI_Echo "[i] CDN Whitelisting Disabled"
 			;;
 		*)
 			Command_Not_Recognized
@@ -6772,7 +6790,7 @@ settings)
 		enable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
@@ -6780,24 +6798,24 @@ settings)
 			if nvram get rc_support | grep -qF "am_addons"; then
 				displaywebui="enabled"
 				Install_WebUI_Page
-				echo "[i] WebUI Enabled"
-				echo "[i] Generating Stats"
+				UI_Echo "[i] WebUI Enabled"
+				UI_Echo "[i] Generating Stats"
 				Generate_Stats
 			else
-				echo "[*] Firmware Version Not Supported - Please Update To Use This Feature"
+				UI_Echo "[*] Firmware Version Not Supported - Please Update To Use This Feature"
 			fi
 			;;
 		disable)
 			Check_Lock "$@"
 			if ! Check_IPSets || ! Check_IPTables; then
-				echo "[*] Skynet Not Running - Exiting"
+				UI_Echo "[*] Skynet Not Running - Exiting"
 				echo
 				exit 1
 			fi
 			Purge_Logs
 			Uninstall_WebUI_Page
 			displaywebui="disabled"
-			echo "[i] WebUI Disabled"
+			UI_Echo "[i] WebUI Disabled"
 			;;
 		*)
 			Command_Not_Recognized
@@ -6807,7 +6825,7 @@ settings)
 	switchswap)
 		Check_Lock "$@"
 		if ! Check_IPSets || ! Check_IPTables; then
-			echo "[*] Skynet Not Running - Exiting"
+			UI_Echo "[*] Skynet Not Running - Exiting"
 			echo
 			exit 1
 		fi
@@ -6822,7 +6840,7 @@ settings)
 				Prompt_Input "1-2" deleteswap
 				case "$deleteswap" in
 				1)
-					echo "[i] Removing Skynet Generated SWAP File"
+					UI_Echo "[i] Removing Skynet Generated SWAP File"
 					sed -i '\~# Skynet~d' /jffs/scripts/post-mount /jffs/scripts/unmount 2>/dev/null
 					sync
 					echo 3 >/proc/sys/vm/drop_caches
@@ -6833,7 +6851,7 @@ settings)
 					break
 					;;
 				2)
-					echo "[i] Keeping existing Skynet Swap File"
+					UI_Echo "[i] Keeping existing Skynet Swap File"
 					sed -i '\~# Skynet~d' /jffs/scripts/post-mount /jffs/scripts/unmount 2>/dev/null
 					break
 					;;
@@ -6853,7 +6871,7 @@ settings)
 
 		device="$(echo "$skynetloc" | awk -F'/skynet' '{print $1}')"
 		if [ -z "$device" ] || [ ! -d "$device" ]; then
-			echo "[*] No valid USB device located at $device. Returning to menu."
+			UI_Echo "[*] No valid USB device located at $device. Returning to menu."
 			echo
 		else
 			Create_Swap
@@ -6869,27 +6887,27 @@ debug)
 	case "$2" in
 	watch)
 		if ! Check_IPSets || ! Check_IPTables; then
-			echo "[*] Skynet Not Running - Exiting"
+			UI_Echo "[*] Skynet Not Running - Exiting"
 			echo
 			exit 1
 		fi
 		if [ "$logmode" = "disabled" ]; then
-			echo "[*] Logging Is Disabled - Exiting!"
+			UI_Echo "[*] Logging Is Disabled - Exiting!"
 			echo
 			exit 2
 		fi
-		trap 'echo;echo;echo "[*] Interrupted"; break; Purge_Logs' INT
-		echo "[i] Watching Syslog For Log Entries (ctrl +c) To Stop"
+		trap 'echo;echo;UI_Echo "[*] Interrupted"; break; Purge_Logs' INT
+		UI_Echo "[i] Watching Syslog For Log Entries (ctrl +c) To Stop"
 		echo
 		Purge_Logs
 		case "$3" in
 		ip)
 			if ! echo "$4" | Is_IP; then
-				echo "[*] $4 Is Not A Valid IP"
+				UI_Echo "[*] $4 Is Not A Valid IP"
 				echo
 				exit 2
 			fi
-			echo "[i] Filtering Entries Involving IP $4"
+			UI_Echo "[i] Filtering Entries Involving IP $4"
 			echo
 
 			tail -F "$syslogloc" | while IFS= read -r logoutput; do
@@ -6955,11 +6973,11 @@ debug)
 			;;
 		port)
 			if ! echo "$4" | Is_Port || [ "$4" -gt "65535" ]; then
-				echo "[*] $4 Is Not A Valid Port"
+				UI_Echo "[*] $4 Is Not A Valid Port"
 				echo
 				exit 2
 			fi
-			echo "[i] Filtering Entries Involving Port $4"
+			UI_Echo "[i] Filtering Entries Involving Port $4"
 			echo
 
 			tail -F "$syslogloc" | while IFS= read -r logoutput; do
@@ -7325,16 +7343,16 @@ debug)
 		printf '╚═══════════════════════════════════╩═══════════════════════════════════════════════════════════════════════╝\n'
 		if [ -n "$fail" ]; then
 			echo
-			echo "[*] Rule Integrity Violation - [ ${fail}]"
+			UI_Echo "[*] Rule Integrity Violation - [ ${fail}]"
 			unset fail
 		fi
 		if [ -n "$localfail" ]; then
 			echo
-			echo "[*] Local File Missing - [ ${localfail}]"
+			UI_Echo "[*] Local File Missing - [ ${localfail}]"
 		fi
 		if [ -n "$mountedfail" ]; then
 			echo
-			echo "[*] Mounted File Missing - [ ${mountedfail}]"
+			UI_Echo "[*] Mounted File Missing - [ ${mountedfail}]"
 		fi
 		if [ "$3" = "extended" ]; then
 			echo
@@ -7348,18 +7366,18 @@ debug)
 		Purge_Logs "all"
 		if nvram get rc_support | grep -qF "am_addons"; then
 			if Is_Enabled "$displaywebui"; then
-				echo "[i] Generating Stats For WebUI"
+				UI_Echo "[i] Generating Stats For WebUI"
 				Generate_Stats
 			else
-				echo "[*] WebUI Is Currently Disabled - To Enable Use ( sh $0 settings webui enable )"
+				UI_Echo "[*] WebUI Is Currently Disabled - To Enable Use ( sh $0 settings webui enable )"
 			fi
 		fi
 		;;
 	clean)
-		echo "[i] Cleaning Syslog Entries"
+		UI_Echo "[i] Cleaning Syslog Entries"
 		Purge_Logs "all"
 		sed -i '\~Skynet: \[%\] ~d' "$syslog1loc" "$syslogloc" 2>/dev/null
-		echo "[i] Complete!"
+		UI_Echo "[i] Complete!"
 		echo
 		nolog="2"
 		nocfg="1"
@@ -7373,9 +7391,9 @@ debug)
 			if [ -z "$swaplocation" ] && ! Check_Swap; then
 				Manage_Device
 				Create_Swap
-				echo "[i] Saving Changes"
+				UI_Echo "[i] Saving Changes"
 				Save_IPSets
-				echo "[i] Unloading Skynet Components"
+				UI_Echo "[i] Unloading Skynet Components"
 				Unload_Cron "all"
 				Unload_IPTables
 				Unload_IOTTables
@@ -7385,7 +7403,7 @@ debug)
 				restartfirewall="1"
 				nolog="2"
 			else
-				echo "[*] Pre-existing SWAP File Detected - Exiting!"
+				UI_Echo "[*] Pre-existing SWAP File Detected - Exiting!"
 			fi
 			;;
 		uninstall)
@@ -7395,11 +7413,11 @@ debug)
 				if [ -n "$findswap" ]; then
 					swaplocation="$findswap"
 				elif [ -z "$findswap" ]; then
-					findswap="$(grep -m1 -F "file" "/proc/swaps" | awk '{print $1}')"
+					findswap="$(awk '/file/ {print $1; exit}' "/proc/swaps")"
 					if [ -n "$findswap" ]; then
 						swaplocation="$findswap"
 					else
-						echo "[*] No SWAP File Detected - Exiting!"
+						UI_Echo "[*] No SWAP File Detected - Exiting!"
 						echo
 						exit 1
 					fi
@@ -7407,21 +7425,21 @@ debug)
 			else
 				swaplocation="$(awk 'NR==2 { print $1 }' /proc/swaps)"
 			fi
-			echo "[i] Saving Changes"
+			UI_Echo "[i] Saving Changes"
 			Save_IPSets
-			echo "[i] Unloading Skynet Components"
+			UI_Echo "[i] Unloading Skynet Components"
 			Unload_Cron "all"
 			Unload_IPTables
 			Unload_IOTTables
 			Unload_LogIPTables
 			Unload_IPSets
-			echo "[i] Removing SWAP File ($swaplocation)"
+			UI_Echo "[i] Removing SWAP File ($swaplocation)"
 			if [ -f "$swaplocation" ]; then
 				sed -i '\~swapon ~d' /jffs/scripts/post-mount
 				sync
 				echo 3 >/proc/sys/vm/drop_caches
 				swapoff -a
-				if rm -rf "$swaplocation"; then echo "[i] SWAP File Removed"; else "[*] SWAP File Partially Removed - Please Inspect Manually"; fi
+				if rm -rf "$swaplocation"; then UI_Echo "[i] SWAP File Removed"; else "[*] SWAP File Partially Removed - Please Inspect Manually"; fi
 			fi
 			sed -i '\~swapoff ~d' /jffs/scripts/unmount
 			Log info "Restarting Firewall Service"
@@ -7436,24 +7454,24 @@ debug)
 	backup)
 		Check_Lock "$@"
 		if ! Check_IPSets || ! Check_IPTables; then
-			echo "[*] Skynet Not Running - Exiting"
+			UI_Echo "[*] Skynet Not Running - Exiting"
 			echo
 			exit 1
 		fi
 		Purge_Logs
-		echo "[i] Saving Changes"
+		UI_Echo "[i] Saving Changes"
 		Save_IPSets
-		echo "[i] Backing Up Skynet Related Files"
+		UI_Echo "[i] Backing Up Skynet Related Files"
 		echo
 		tar -czvf "${skynetloc}/Skynet-Backup.tar.gz" -C "${skynetloc}" skynet.ipset skynet.log events.log skynet.cfg
 		echo
-		echo "[i] Backup Saved To ${skynetloc}/Skynet-Backup.tar.gz"
-		echo "[i] Copy This File To A Safe Location"
+		UI_Echo "[i] Backup Saved To ${skynetloc}/Skynet-Backup.tar.gz"
+		UI_Echo "[i] Copy This File To A Safe Location"
 		;;
 	restore)
 		Check_Lock "$@"
 		if ! Check_IPSets || ! Check_IPTables; then
-			echo "[*] Skynet Not Running - Exiting"
+			UI_Echo "[*] Skynet Not Running - Exiting"
 			echo
 			exit 1
 		fi
@@ -7461,12 +7479,12 @@ debug)
 		if [ ! -f "$backuplocation" ]; then
 			Prompt_Typed "backuplocation" "Location" "[*] Skynet Backup Doesn't Exist In Expected Path, Please Provide Location"
 			if [ ! -f "$backuplocation" ]; then
-				echo "[*] Skynet Backup Doesn't Exist In Specified Path - Exiting"
+				UI_Echo "[*] Skynet Backup Doesn't Exist In Specified Path - Exiting"
 				echo
 				exit 2
 			fi
 		fi
-		echo "[i] Restoring Skynet Backup"
+		UI_Echo "[i] Restoring Skynet Backup"
 		echo
 		Purge_Logs
 		Unload_IPTables
@@ -7475,7 +7493,7 @@ debug)
 		Unload_IPSets
 		tar -xzvf "$backuplocation" -C "${skynetloc}"
 		echo
-		echo "[i] Backup Restored"
+		UI_Echo "[i] Backup Restored"
 		Log info "Restarting Firewall Service"
 		restartfirewall="1"
 		nolog="2"
@@ -7490,16 +7508,16 @@ debug)
 		if grep -qE "^[[:space:]]*${func}[[:space:]]*\(\)" "$0"; then
 			# Show what we're invoking, including any follow‐up args
 			if [ $# -gt 0 ]; then
-				echo "[i] Running function ${func}() with args: $*"
+				UI_Echo "[i] Running function ${func}() with args: $*"
 			else
-				echo "[i] Running function ${func}()"
+				UI_Echo "[i] Running function ${func}()"
 			fi
 			echo
 
 			# Call it with those args
 			if "$func" "$@"; then
 				echo
-				echo "[i] ${func}() completed successfully"
+				UI_Echo "[i] ${func}() completed successfully"
 			else
 				code=$?
 				echo
@@ -7522,7 +7540,7 @@ stats)
 install)
 	Check_Lock "$@"
 	if ! ipset -v 2>/dev/null | grep -qE 'v6|v7'; then
-		echo "[*] IPSet Version Not Supported - Please Update To Latest Firmware"
+		UI_Echo "[*] IPSet Version Not Supported - Please Update To Latest Firmware"
 		echo
 		exit 1
 	fi
@@ -7540,11 +7558,11 @@ install)
 		nvram commit
 	fi
 	if nvram get wan0_ipaddr | Is_PrivateIP; then
-		echo "[*] Private IP Detected - Please Put Your Modem In Bridge Mode / Disable CG-NAT"
+		UI_Echo "[*] Private IP Detected - Please Put Your Modem In Bridge Mode / Disable CG-NAT"
 		echo
 	fi
 
-	echo "[i] Installing Skynet $(Filter_Version <"$0")"
+	UI_Echo "[i] Installing Skynet $(Filter_Version <"$0")"
 	echo
 	Manage_Device
 	mkdir -p "${device}/skynet"
@@ -7558,22 +7576,22 @@ install)
 		Prompt_Input "1-3" mode1
 		case "${mode1:?}" in
 		1)
-			echo "[i] All Traffic Selected"
+			UI_Echo "[i] All Traffic Selected"
 			filtertraffic="all"
 			break
 			;;
 		2)
-			echo "[i] Inbound Traffic Selected"
+			UI_Echo "[i] Inbound Traffic Selected"
 			filtertraffic="inbound"
 			break
 			;;
 		3)
-			echo "[i] Outbound Traffic Selected"
+			UI_Echo "[i] Outbound Traffic Selected"
 			filtertraffic="outbound"
 			break
 			;;
 		e | exit)
-			echo "[*] Exiting!"
+			UI_Echo "[*] Exiting!"
 			echo
 			exit 0
 			;;
@@ -7592,19 +7610,19 @@ install)
 		Prompt_Input "1-2" mode3
 		case "${mode3:?}" in
 		1)
-			echo "[i] Logging Enabled"
+			UI_Echo "[i] Logging Enabled"
 			logmode="enabled"
 			iotlogging="enabled"
 			break
 			;;
 		2)
-			echo "[i] Logging Disabled"
+			UI_Echo "[i] Logging Disabled"
 			logmode="disabled"
 			iotlogging="disabled"
 			break
 			;;
 		e | exit | back | menu)
-			echo "[*] Exiting!"
+			UI_Echo "[*] Exiting!"
 			echo
 			exit 0
 			;;
@@ -7624,24 +7642,24 @@ install)
 		Prompt_Input "1-3" mode4
 		case "${mode4:?}" in
 		1)
-			echo "[i] Malware Blacklist Updating Enabled & Scheduled Every Day"
+			UI_Echo "[i] Malware Blacklist Updating Enabled & Scheduled Every Day"
 			banmalwareupdate="daily"
 			forcebanmalwareupdate="enabled"
 			break
 			;;
 		2)
-			echo "[i] Malware Blacklist Auto-Updates Enabled & Scheduled For Every Monday"
+			UI_Echo "[i] Malware Blacklist Auto-Updates Enabled & Scheduled For Every Monday"
 			banmalwareupdate="weekly"
 			forcebanmalwareupdate="enabled"
 			break
 			;;
 		3)
-			echo "[i] Malware Blacklist Auto-Updates Disabled"
+			UI_Echo "[i] Malware Blacklist Auto-Updates Disabled"
 			banmalwareupdate="disabled"
 			break
 			;;
 		e | exit | back | menu)
-			echo "[*] Exiting!"
+			UI_Echo "[*] Exiting!"
 			echo
 			exit 0
 			;;
@@ -7660,17 +7678,17 @@ install)
 		Prompt_Input "1-2" mode5
 		case "${mode5:?}" in
 		1)
-			echo "[i] Skynet Auto-Updates Enabled & Scheduled For 1.25am Every Monday"
+			UI_Echo "[i] Skynet Auto-Updates Enabled & Scheduled For 1.25am Every Monday"
 			autoupdate="enabled"
 			break
 			;;
 		2)
-			echo "[i] Skynet Auto-Updates Disabled"
+			UI_Echo "[i] Skynet Auto-Updates Disabled"
 			autoupdate="disabled"
 			break
 			;;
 		e | exit | back | menu)
-			echo "[*] Exiting!"
+			UI_Echo "[*] Exiting!"
 			echo
 			exit 0
 			;;
@@ -7740,7 +7758,7 @@ install)
 	Unload_LogIPTables
 	Unload_IPSets
 	iptables -t raw -F
-	echo "[i] Restarting Firewall Service To Complete Installation"
+	UI_Echo "[i] Restarting Firewall Service To Complete Installation"
 	restartfirewall="1"
 	nolog="2"
 	;;
@@ -7766,7 +7784,7 @@ uninstall)
 					Prompt_Input "1-2" removeswap
 					case "${removeswap:?}" in
 					1)
-						echo "[i] Removing Skynet Generated SWAP File"
+						UI_Echo "[i] Removing Skynet Generated SWAP File"
 						sed -i '\~# Skynet~d' /jffs/scripts/post-mount /jffs/scripts/unmount
 						sync
 						echo 3 >/proc/sys/vm/drop_caches
@@ -7778,7 +7796,7 @@ uninstall)
 						break
 						;;
 					e | exit)
-						echo "[*] Exiting!"
+						UI_Echo "[*] Exiting!"
 						echo
 						exit 0
 						;;
@@ -7788,7 +7806,7 @@ uninstall)
 					esac
 				done
 			fi
-			echo "[i] Unloading Skynet Components"
+			UI_Echo "[i] Unloading Skynet Components"
 			Purge_Logs "all"
 			Unload_Cron "all"
 			Unload_IPTables
@@ -7800,7 +7818,7 @@ uninstall)
 			nvram unset skynet_old_swappiness
 			nvram unset skynet_old_overcommit
 			nvram commit
-			echo "[i] Deleting Skynet Files"
+			UI_Echo "[i] Deleting Skynet Files"
 			sed -i '\~# Skynet~d' /jffs/scripts/firewall-start /jffs/scripts/services-stop /jffs/scripts/service-event /jffs/configs/profile.add /jffs/configs/dnsmasq.conf.add /jffs/scripts/unmount
 			sed -i '\~# Skynet Zero~d' /jffs/scripts/firewall-start 2>/dev/null
 			sed -i '\~# SkyNet-SF~d' /jffs/scripts/firewall-start 2>/dev/null
@@ -7817,12 +7835,12 @@ uninstall)
 				killall -HUP syslog-ng
 			fi
 			iptables -t raw -F
-			echo "[i] Restarting Firewall Service"
+			UI_Echo "[i] Restarting Firewall Service"
 			service restart_firewall
 			exit 0
 			;;
 		2 | e | exit)
-			echo "[*] Exiting!"
+			UI_Echo "[*] Exiting!"
 			echo
 			exit 0
 			;;
