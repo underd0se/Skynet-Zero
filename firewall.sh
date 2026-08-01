@@ -1351,7 +1351,9 @@ Whitelist_Shared() {
 	sed -i '\~# Skynet~d' /jffs/configs/dnsmasq.conf.add
 	grep -hvF "#" /jffs/addons/shared-whitelists/shared-*-whitelist | Strip_Domain | xargs -n 20 | sed 's~^~ipset=/~g;s~ ~/~g;s~$~/Skynet-WhitelistDomains # Skynet~g' >>/jffs/configs/dnsmasq.conf.add
 	chmod 644 /jffs/configs/dnsmasq.conf.add
-	service restart_dnsmasq >/dev/null 2>&1
+	if [ "$(awk '{print int($1)}' /proc/uptime)" -gt 300 ]; then
+		service restart_dnsmasq >/dev/null 2>&1
+	fi
 	if [ "$(uname -o)" = "ASUSWRT-Merlin" ]; then dotvar="dnspriv_rulelist"; else dotvar="stubby_dns"; fi
 	for ip in $(nvram get "$dotvar" | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}'); do
 		echo "add Skynet-Whitelist $ip comment \"nvram: $dotvar\""
@@ -7732,7 +7734,7 @@ install)
 	if [ -z "$cdnwhitelist" ]; then cdnwhitelist="enabled"; fi
 	if [ -z "$displaywebui" ]; then displaywebui="enabled"; fi
 	Write_Config
-	cmdline="sh /jffs/scripts/firewall start skynetloc=${device}/skynet # Skynet"
+	cmdline="sh /jffs/scripts/firewall start skynetloc=${device}/skynet # Skynet &"
 	if grep -qE "^sh /jffs/scripts/firewall .* # Skynet" /jffs/scripts/firewall-start; then
 		sed -i "s~sh /jffs/scripts/firewall .* # Skynet .*~$cmdline~" /jffs/scripts/firewall-start
 	else
