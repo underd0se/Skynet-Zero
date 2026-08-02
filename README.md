@@ -6,6 +6,11 @@ Skynet Zero is an optimized version of the Asuswrt-Merlin firewall script design
 
 ## Development Changelog
 
+### v1.1.6-dev
+- **2026-08-02**: Decoupled Skynet Zero from dictating system-wide swap configurations. The installer now seamlessly detects and respects third-party `amtm` swap configurations without prompting for overwrites.
+- **2026-08-02**: Downgraded aggressive `<1GB swap` errors to graceful info messages for users deliberately running low-RAM profiles.
+- **2026-08-02**: Secured the `Zero Swap` destruction path and `switchswap` menu to explicitly target only Skynet-native swap files, permanently preventing accidental unmounting or deletion of `amtm` or Entware partitions.
+
 ### v1.1.5-dev
 - **2026-08-01**: **[Hotfix]** Solved Asuswrt boot sequence race condition by background-forking Skynet (`&`) during the `firewall-start` hook, preventing it from stalling Asuswrt's internal init timers.
 - **2026-08-01**: **[Hotfix]** Wrapped asynchronous `restart_dnsmasq` calls in a 5-minute uptime check to prevent killing DNS resolution during the critical boot window, safely preserving Trend Micro `bwdpi` (QoS) and Diversion initialization.

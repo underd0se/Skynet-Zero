@@ -11,7 +11,7 @@
 #                                                                                                           #
 #                                 Router Firewall And Security Enhancements                                 #
 #                      By Adamm (Forked by underd0se) -  https://github.com/underd0se/Skynet-Zero           #
-#                               01/08/2026 - v8.1.1-sz.1.1.5-dev (Zero Swap)                                #
+#                               02/08/2026 - v8.1.1-sz.1.1.6-dev (Zero Swap)                                #
 #############################################################################################################
 
 export PATH="/sbin:/bin:/usr/sbin:/usr/bin:$PATH"
@@ -232,7 +232,7 @@ Check_Settings() {
 		# warn if too small (<1GB)
 		swap_kb=$(du -k "$swaplocation" 2>/dev/null | awk '{print $1}') || swap_kb=0
 		if [ "$swap_kb" -gt 0 ] && [ "$swap_kb" -lt 1048576 ]; then
-			Log error -s "SWAP File Too Small (<1GB) - Please Fix Immediately!"
+			Log info -s "SWAP File is <1GB. Skynet Zero's low-RAM mode will manage memory safely."
 		fi
 	fi
 
@@ -2575,15 +2575,18 @@ Create_Swap() {
 			break
 			;;
 		3)
-			UI_Echo "[i] Proceeding without SWAP file (Skynet Zero mode)"
+			UI_Echo "[i] Proceeding without Skynet SWAP file (Skynet Zero mode)"
 			echo
 
-			swaplocation="${device}/myswap.swp"
-			if [ -f "$swaplocation" ]; then
-				swapoff -a 2>/dev/null
-				rm -f "$swaplocation"
+			if grep -q 'swapon .*/myswap\.swp # Skynet' /jffs/scripts/post-mount 2>/dev/null; then
+				swaplocation="${device}/myswap.swp"
+				if [ -f "$swaplocation" ]; then
+					swapoff "$swaplocation" 2>/dev/null
+					rm -f "$swaplocation"
+				fi
+				sed -i '\~swapon .*/myswap\.swp # Skynet~d' /jffs/scripts/post-mount
+				sed -i '\~swapoff -a 2>/dev/null # Skynet~d' /jffs/scripts/unmount 2>/dev/null
 			fi
-			sed -i '\~swapon ~d' /jffs/scripts/post-mount
 			return 0
 			;;
 		e | exit)
@@ -2601,7 +2604,7 @@ Create_Swap() {
 
 	# 2) Remove any existing swap file
 	if [ -f "$swaplocation" ]; then
-		swapoff -a 2>/dev/null
+		swapoff "$swaplocation" 2>/dev/null
 		rm -f "$swaplocation"
 	fi
 
@@ -2623,7 +2626,7 @@ Create_Swap() {
 	swapon "$swaplocation"
 
 	# 5) Ensure post-mount script will re-enable it on reboot
-	sed -i '\~swapon ~d' /jffs/scripts/post-mount
+	sed -i '\~swapon .*/myswap\.swp # Skynet~d' /jffs/scripts/post-mount
 	sed -i "2i [ -f \"\$1/myswap.swp\" ] && swapon \$1/myswap.swp # Skynet" /jffs/scripts/post-mount
 
 	# 6) Ensure unmount script will turn it off
@@ -7704,7 +7707,12 @@ install)
 	done
 	echo
 	Check_Files firewall-start services-stop service-event post-mount unmount
-	Create_Swap
+	if Check_Swap; then
+		UI_Echo "[i] Existing SWAP file detected. Skynet Zero will respect your configuration."
+		echo
+	else
+		Create_Swap
+	fi
 	if [ -f "$skynetlog" ]; then mv "$skynetlog" "${device}/skynet/skynet.log"; fi
 	if [ -f "$skynetevents" ]; then mv "$skynetevents" "${device}/skynet/events.log"; fi
 	if [ -f "$skynetipset" ]; then mv "$skynetipset" "${device}/skynet/skynet.ipset"; fi
