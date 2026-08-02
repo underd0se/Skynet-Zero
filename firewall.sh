@@ -1353,6 +1353,7 @@ Whitelist_Shared() {
 	grep -hvF "#" /jffs/addons/shared-whitelists/shared-*-whitelist | Strip_Domain | xargs -n 20 | sed 's~^~ipset=/~g;s~ ~/~g;s~$~/Skynet-WhitelistDomains # Skynet~g' >>/jffs/configs/dnsmasq.conf.add.tmp
 	chmod 644 /jffs/configs/dnsmasq.conf.add.tmp
 	mv -f /jffs/configs/dnsmasq.conf.add.tmp /jffs/configs/dnsmasq.conf.add
+	# shellcheck disable=SC2002
 	if [ "$(cat /proc/uptime | grep -oE "^[0-9]+")" -gt "300" ]; then
 		service restart_dnsmasq >/dev/null 2>&1
 	fi
