@@ -11,7 +11,7 @@
 #                                                                                                           #
 #                                 Router Firewall And Security Enhancements                                 #
 #                      By Adamm (Forked by underd0se) -  https://github.com/underd0se/Skynet-Zero           #
-#                               01/08/2026 - v8.1.1-sz.1.1.5 (Zero Swap)                                    #
+#                               01/08/2026 - v8.1.1-sz.1.1.5-dev (Zero Swap)                                #
 #############################################################################################################
 
 export PATH="/sbin:/bin:/usr/sbin:/usr/bin:$PATH"
@@ -1348,10 +1348,12 @@ Whitelist_Shared() {
 	add Skynet-Whitelist 192.30.252.0/22 comment \"nvram: Github Content Server\"
 	add Skynet-Whitelist 127.0.0.0/8 comment \"nvram: Localhost\"" | tr -d "\t" | Filter_IPLine | ipset restore -! 2>/dev/null
 	ipset flush Skynet-WhitelistDomains
-	sed -i '\~# Skynet~d' /jffs/configs/dnsmasq.conf.add
-	grep -hvF "#" /jffs/addons/shared-whitelists/shared-*-whitelist | Strip_Domain | xargs -n 20 | sed 's~^~ipset=/~g;s~ ~/~g;s~$~/Skynet-WhitelistDomains # Skynet~g' >>/jffs/configs/dnsmasq.conf.add
-	chmod 644 /jffs/configs/dnsmasq.conf.add
-	if [ "$(awk '{print int($1)}' /proc/uptime)" -gt 300 ]; then
+	touch /jffs/configs/dnsmasq.conf.add
+	sed '\~# Skynet~d' /jffs/configs/dnsmasq.conf.add >/jffs/configs/dnsmasq.conf.add.tmp
+	grep -hvF "#" /jffs/addons/shared-whitelists/shared-*-whitelist | Strip_Domain | xargs -n 20 | sed 's~^~ipset=/~g;s~ ~/~g;s~$~/Skynet-WhitelistDomains # Skynet~g' >>/jffs/configs/dnsmasq.conf.add.tmp
+	chmod 644 /jffs/configs/dnsmasq.conf.add.tmp
+	mv -f /jffs/configs/dnsmasq.conf.add.tmp /jffs/configs/dnsmasq.conf.add
+	if [ "$(cat /proc/uptime | grep -oE "^[0-9]+")" -gt "300" ]; then
 		service restart_dnsmasq >/dev/null 2>&1
 	fi
 	if [ "$(uname -o)" = "ASUSWRT-Merlin" ]; then dotvar="dnspriv_rulelist"; else dotvar="stubby_dns"; fi
@@ -7734,7 +7736,7 @@ install)
 	if [ -z "$cdnwhitelist" ]; then cdnwhitelist="enabled"; fi
 	if [ -z "$displaywebui" ]; then displaywebui="enabled"; fi
 	Write_Config
-	cmdline="sh /jffs/scripts/firewall start skynetloc=${device}/skynet # Skynet &"
+	cmdline="sh /jffs/scripts/firewall start skynetloc=${device}/skynet & # Skynet"
 	if grep -qE "^sh /jffs/scripts/firewall .* # Skynet" /jffs/scripts/firewall-start; then
 		sed -i "s~sh /jffs/scripts/firewall .* # Skynet .*~$cmdline~" /jffs/scripts/firewall-start
 	else
