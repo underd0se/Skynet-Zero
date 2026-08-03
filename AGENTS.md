@@ -3,8 +3,7 @@
 This document outlines the strict guidelines, workflows, and philosophies that all AI agents MUST follow when working on the `Skynet-Zero` repository. This is a highly optimized, RAM-only fork of Asuswrt-Merlin's Skynet.
 
 ## 1. Git Workflow & Repository Safety
-- **Never Push to Upstream**: The `origin` remote points to Adamm00's upstream repository. **NEVER attempt to push, commit, or open PRs against Adamm's repo.** 
-- **Use the Fork**: All pushes must go to the user's fork (`underd0se/Skynet-Zero`), mapped locally as the `fork` remote.
+- **Push to Origin**: The repository has been locally detached from Adamm00's upstream repository. The `origin` remote now points directly to the user's repository (`underd0se/Skynet-Zero`). All pushes must go to `origin`.
 - **Isolated Branches**: Always work on a separate feature or fix branch (e.g., `feature/awk-optimization` or `fix/dnsmasq-loop`). Do not commit directly to `master` or `development`.
 - **Ask Before Action**: NEVER commit, push, PR, or merge code without explicitly presenting the changes and asking the user for permission first.
 
