@@ -11,19 +11,26 @@
 #                                                                                                           #
 #                                 Router Firewall And Security Enhancements                                 #
 #                      By Adamm (Forked by underd0se) -  https://github.com/underd0se/Skynet-Zero           #
-#                                 02/08/2026 - v8.1.1-sz.1.1.6 (Zero Swap)                                  #
+#                                 31/08/2026 - v8.1.1-sz.1.1.7 (Zero Swap)                                  #
 #############################################################################################################
 
 export PATH="/sbin:/bin:/usr/sbin:/usr/bin:$PATH"
 printf '\033[?7l'
 
 SILENT_MODE=0
-if [ "$1" = "api" ] || [ "$1" = "silent" ]; then
-	SILENT_MODE=1
-	[ "$1" = "api" ] && shift
-fi
-if echo "$@" | grep -q "silent"; then
-	SILENT_MODE=1
+for arg in "$@"; do
+	if [ "$arg" = "silent" ] || [ "$arg" = "api" ]; then
+		SILENT_MODE=1
+	fi
+done
+
+if [ "$SILENT_MODE" = "1" ]; then
+	for arg in "$@"; do
+		if [ "$arg" != "silent" ] && [ "$arg" != "api" ]; then
+			set -- "$@" "$arg"
+		fi
+		shift
+	done
 fi
 
 if [ "$SILENT_MODE" = "0" ] && [ "$1" != "amtmupdate" ]; then
@@ -5264,7 +5271,9 @@ banmalware | fs)
 		UI_Echo "[i] Filter URL Reset"
 		unset "customlisturl"
 	fi
-	if [ -n "$2" ] && [ "$2" != "reset" ] && [ "$1" != "fs" ]; then
+	[ "$customlisturl" = "silent" ] || [ "$customlisturl" = "api" ] && unset "customlisturl"
+	[ "$customlist2url" = "silent" ] || [ "$customlist2url" = "api" ] && unset "customlist2url"
+	if [ -n "$2" ] && [ "$2" != "reset" ] && [ "$2" != "silent" ] && [ "$2" != "api" ] && [ "$1" != "fs" ]; then
 		customlisturl="$2"
 		listurl="$customlisturl"
 		UI_Echo "[i] Custom Filter Detected: $customlisturl"
@@ -5276,7 +5285,7 @@ banmalware | fs)
 		else
 			fastswitch="enabled"
 			UI_Echo "[i] Fast Switch List Enabled"
-			if [ -z "$customlist2url" ] || [ -n "$2" ]; then
+			if [ -z "$customlist2url" ] || { [ -n "$2" ] && [ "$2" != "silent" ] && [ "$2" != "api" ]; }; then
 				customlist2url="$2"
 				listurl="$customlist2url"
 			else
