@@ -6,6 +6,10 @@ Skynet Zero is an optimized version of the Asuswrt-Merlin firewall script design
 
 ## Development Changelog
 
+### v1.1.7-dev
+- **2026-08-31**: **[Bugfix]** Fixed the legacy `banmalware silent` cron failure by filtering out `silent` and `api` flags from positional arguments at startup, preventing `banmalware` from treating `"silent"` as a custom filter URL and aborting blacklist updates.
+- **2026-08-31**: Added defensive sanitization to purge any stale `"silent"` or `"api"` strings inadvertently stored in `customlisturl` / `customlist2url`.
+
 ### v1.1.6-dev
 - **2026-08-02**: Decoupled Skynet Zero from dictating system-wide swap configurations. The installer now seamlessly detects and respects third-party `amtm` swap configurations without prompting for overwrites.
 - **2026-08-02**: Downgraded aggressive `<1GB swap` errors to graceful info messages for users deliberately running low-RAM profiles.
