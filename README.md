@@ -6,6 +6,9 @@ Skynet Zero is an optimized version of the Asuswrt-Merlin firewall script design
 
 ## Development Changelog
 
+### v1.1.8-dev
+- **2026-09-04**: **[Bugfix]** Eliminated `Lock file busy but metadata invalid (pid='')` deadlocks. Removed premature lock file truncation, added atomic metadata recording, implemented recursive child-process tree termination (`SIGTERM` -> `SIGKILL`), and added automatic recovery for orphaned locks using kernel `/proc/locks` inspection.
+
 ### v1.1.7-dev
 - **2026-08-31**: **[Bugfix]** Fixed the legacy `banmalware silent` cron failure by filtering out `silent` and `api` flags from positional arguments at startup, preventing `banmalware` from treating `"silent"` as a custom filter URL and aborting blacklist updates.
 - **2026-08-31**: Added defensive sanitization to purge any stale `"silent"` or `"api"` strings inadvertently stored in `customlisturl` / `customlist2url`.
