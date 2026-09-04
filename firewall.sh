@@ -11,7 +11,7 @@
 #                                                                                                           #
 #                                 Router Firewall And Security Enhancements                                 #
 #                      By Adamm (Forked by underd0se) -  https://github.com/underd0se/Skynet-Zero           #
-#                                 31/08/2026 - v8.1.1-sz.1.1.7 (Zero Swap)                                  #
+#                                 04/09/2026 - v8.1.1-sz.1.1.8 (Zero Swap)                                  #
 #############################################################################################################
 
 export PATH="/sbin:/bin:/usr/sbin:/usr/bin:$PATH"
@@ -84,6 +84,36 @@ fi
 #- Functions -#
 ###############
 
+Kill_Process_Tree() {
+	target_pid="$1"
+	[ -z "$target_pid" ] && return
+	[ "$target_pid" = "$$" ] && return
+	[ "$target_pid" = "$PPID" ] && return
+	[ "$target_pid" = "1" ] && return
+
+	# Terminate direct child processes first (e.g. hung subprocesses)
+	awk -v ppid="$target_pid" '$4 == ppid {print $1}' /proc/[0-9]*/stat 2>/dev/null | while IFS= read -r child; do
+		if [ -n "$child" ] && [ "$child" != "$$" ] && [ "$child" != "$PPID" ] && [ "$child" != "1" ]; then
+			kill -9 "$child" 2>/dev/null
+		fi
+	done
+
+	# Send SIGTERM first
+	kill "$target_pid" 2>/dev/null
+
+	# Wait up to 1 second for graceful exit
+	wait_step=0
+	while [ "$wait_step" -lt 10 ] && [ -d "/proc/$target_pid" ]; do
+		usleep 100000 2>/dev/null || sleep 1
+		wait_step=$((wait_step + 1))
+	done
+
+	# Force kill if still present
+	if [ -d "/proc/$target_pid" ]; then
+		kill -9 "$target_pid" 2>/dev/null
+	fi
+}
+
 Check_Lock() {
 	# Open FD 9 for locking
 	exec 9<>"$LOCK_FILE"
@@ -100,18 +130,39 @@ Check_Lock() {
 			return 0
 		fi
 
-		# If we have a non-empty PID and that process exists
+		# If metadata is missing or PID is not running, wait briefly and re-read
+		# in case another instance was in the middle of writing the lock line
+		if [ -z "$locked_pid" ] || [ ! -d "/proc/$locked_pid" ]; then
+			sleep 1
+			locked_cmd=$(cut -d'|' -f1 "$LOCK_FILE" 2>/dev/null)
+			locked_pid=$(cut -d'|' -f2 "$LOCK_FILE" 2>/dev/null)
+			lock_timestamp=$(cut -d'|' -f3 "$LOCK_FILE" 2>/dev/null)
+
+			# If lock was released during sleep, try to acquire it
+			if flock -n 9; then
+				echo "$0 $*|$$|$(date +%s)" >"$LOCK_FILE"
+				return 0
+			fi
+		fi
+
+		# Case 1: Valid PID exists and process is running
 		if [ -n "$locked_pid" ] && [ -d "/proc/$locked_pid" ]; then
 			age=$((current_time - lock_timestamp))
 
 			if [ "$age" -gt 1800 ] 2>/dev/null; then
-				# Stale lock: kill and re-acquire
-				if kill "$locked_pid" 2>/dev/null; then
-					Log info -s "Killed stale Skynet process (pid=$locked_pid) after $age seconds"
-				fi
-				: >"$LOCK_FILE"
+				Log info -s "Terminating stale Skynet process ($locked_cmd) (pid=$locked_pid) after ${age}s"
+				Kill_Process_Tree "$locked_pid"
+
+				# Wait briefly for lock release
+				retry_flock=0
+				while [ "$retry_flock" -lt 10 ]; do
+					flock -n 9 && break
+					usleep 200000 2>/dev/null || sleep 1
+					retry_flock=$((retry_flock + 1))
+				done
+
 				if ! flock -n 9; then
-					Log error -s "Lock acquisition failed after killing stale process - Exiting (pid=$locked_pid)"
+					Log error -s "Lock acquisition failed after terminating stale process (pid=$locked_pid) - Exiting"
 					echo
 					exit 1
 				fi
@@ -122,30 +173,51 @@ Check_Lock() {
 				exit 1
 			fi
 		else
-			# We *know* flock says the file is locked, but the metadata is missing
-			# or corrupt. That usually means another Skynet instance is in the
-			# middle of writing the lock line. Safer to just bail.
-			Log error -s "Lock file busy but metadata invalid (pid='$locked_pid') - another Skynet instance is running - Exiting"
-			echo
-			exit 1
+			# Case 2: flock is held but metadata is invalid or process is dead (orphaned lock)
+			Log info -s "Recovering from orphaned lock file (pid='$locked_pid')..."
+
+			# Discover any process holding LOCK_FILE open via /proc/*/fd/*
+			for fd in /proc/[0-9]*/fd/*; do
+				[ "$(readlink "$fd" 2>/dev/null)" = "$LOCK_FILE" ] || continue
+				holder=$(echo "$fd" | cut -d'/' -f3)
+				if [ "$holder" != "$$" ] && [ "$holder" != "$PPID" ] && [ "$holder" != "1" ]; then
+					Log info -s "Terminating orphaned lock holder (pid=$holder)"
+					Kill_Process_Tree "$holder"
+				fi
+			done
+
+			# Wait briefly for lock release
+			retry_flock=0
+			while [ "$retry_flock" -lt 10 ]; do
+				flock -n 9 && break
+				usleep 200000 2>/dev/null || sleep 1
+				retry_flock=$((retry_flock + 1))
+			done
+
+			if ! flock -n 9; then
+				Log error -s "Orphaned lock recovery failed - another process still holds lock - Exiting"
+				echo
+				exit 1
+			fi
 		fi
 	fi
 
-	# We now hold the lock — record this invocation
-	: >"$LOCK_FILE"
+	# We now hold the lock — atomically record this invocation
 	echo "$0 $*|$$|$(date +%s)" >"$LOCK_FILE"
 }
 
 Release_Lock() {
-	[ ! -f "$LOCK_FILE" ] && exec 9>&- && return
+	# Always close FD 9
+	exec 9>&- 2>/dev/null
 
-	pid=$(cut -d'|' -f2 "$LOCK_FILE")
+	[ ! -f "$LOCK_FILE" ] && return
 
-	[ "$pid" != "$$" ] && return
+	pid=$(cut -d'|' -f2 "$LOCK_FILE" 2>/dev/null)
 
-	# We own the lock
-	exec 9>&-
-	rm -f "$LOCK_FILE"
+	# Only remove lock file if owned by this process
+	if [ "$pid" = "$$" ]; then
+		rm -f "$LOCK_FILE"
+	fi
 }
 
 Find_Install_Dir() {
